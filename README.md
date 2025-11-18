@@ -84,31 +84,27 @@ docker-compose up -d
    ./scripts/inspect-mysql-data.sh
    ```
    Or use interactive MySQL shell: `docker exec -it mysql-client mysql -h mysql -u demo_user -pdemo_password demo_db`
+   
+   **Note:** The MySQL initialization automatically generates ~1000 users, 200 products, ~10,000 orders, and ~5,000 sessions for performance testing. This may take a few minutes.
 
-3. **Generate more data** for performance testing (optional but recommended):
-   ```bash
-   ./scripts/generate-more-data.sh
-   ```
-   This adds ~1000 users, 200 products, ~10,000 orders, and ~5,000 sessions to demonstrate query performance differences.
+3. Follow the blog to configure source/destination, run the pipeline, and query via ClickHouse
 
-4. Follow the blog to configure source/destination, run the pipeline, and query via ClickHouse
-
-5. **Compare query performance** between raw Iceberg and optimized tables:
+4. **Compare query performance** between raw Iceberg and optimized tables:
    ```bash
    docker exec -i clickhouse-server clickhouse-client < scripts/compare-query-performance.sql
    ```
 
-6. Re-run `scripts/iceberg-setup.sql` + `scripts/cross-database-analytics.sql` whenever you load new data
+5. Re-run `scripts/iceberg-setup.sql` + `scripts/cross-database-analytics.sql` whenever you load new data
 
 ## 📊 Sample Data
 
 The demo includes realistic e-commerce data:
 
 ### Tables
-- **users** (20+ users) - Customer information with demographics
-- **products** (25+ products) - Product catalog across multiple categories
-- **orders** (30+ orders) - Purchase history with various statuses
-- **user_sessions** (15+ sessions) - User activity tracking
+- **users** (1000+ users) - Customer information with demographics
+- **products** (200+ products) - Product catalog across multiple categories
+- **orders** (10,000+ orders) - Purchase history with various statuses
+- **user_sessions** (5,000+ sessions) - User activity tracking
 
 ### Geographic Distribution
 USA, Canada, UK, Germany, France, Spain, Japan, India, Australia, Norway, Brazil, Mexico, Singapore

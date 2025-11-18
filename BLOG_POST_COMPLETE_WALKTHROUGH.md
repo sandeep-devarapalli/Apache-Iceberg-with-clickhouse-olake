@@ -150,10 +150,16 @@ Seed MySQL with Demo Data
 
 The MySQL container automatically executes:
 
-* `mysql-init/01-setup.sql` – creates the `demo_db` schema (`users`, `products`, `orders`, `user_sessions`) and inserts realistic sample data.
+* `mysql-init/01-setup.sql` – creates the `demo_db` schema (`users`, `products`, `orders`, `user_sessions`) and automatically generates a large dataset for performance testing:
+  * **~1000 users** with realistic demographics across 13 countries
+  * **~200 products** across 9 categories
+  * **~10,000 orders** (approximately 10 orders per user)
+  * **~5,000 user sessions** (approximately 5 sessions per user)
 * `mysql-init/02-permissions.sql` – creates integration users:
   * `olake / olake_pass` (CDC + replication privileges).
   * `clickhouse / clickhouse_pass` (direct query access).
+
+**Note:** The data generation uses stored procedures and may take a few minutes to complete, especially for the orders table. This large dataset is necessary to demonstrate meaningful performance differences between raw Iceberg tables and optimized ClickHouse silver/gold tables.
 
 Verify counts:
 
@@ -163,13 +169,13 @@ docker exec -it mysql-server mysql -u demo_user -pdemo_password -e "USE demo_db;
 
 ### 📊 Sample Data Overview
 
-The demo includes realistic e-commerce data:
+The demo includes realistic e-commerce data optimized for performance testing:
 
 **Tables:**
-- **users** (20+ users) - Customer information with demographics
-- **products** (25+ products) - Product catalog across multiple categories
-- **orders** (30+ orders) - Purchase history with various statuses
-- **user_sessions** (15+ sessions) - User activity tracking
+- **users** (1000+ users) - Customer information with demographics
+- **products** (200+ products) - Product catalog across multiple categories
+- **orders** (10,000+ orders) - Purchase history with various statuses
+- **user_sessions** (5,000+ sessions) - User activity tracking
 
 **Geographic Distribution:**
 USA, Canada, UK, Germany, France, Spain, Japan, India, Australia, Norway, Brazil, Mexico, Singapore
@@ -255,47 +261,6 @@ SELECT * FROM orders;
 ```
 
 **Exit the MySQL shell:** Type `exit` or press `Ctrl+D`
-
----
-
-Generate More Data for Performance Testing
-------------------------------------------
-
-To demonstrate the performance difference between raw Iceberg tables and optimized ClickHouse silver/gold tables, you'll want more data. The initial dataset has ~20 users and ~30 orders, which is too small to show meaningful performance differences.
-
-**Quick way (recommended):**
-
-```bash
-# Generate ~1000 users, 200 products, ~10,000 orders, ~5,000 sessions
-./scripts/generate-more-data.sh
-```
-
-**Manual way:**
-
-```bash
-# Run the SQL script directly
-docker exec -i mysql-server mysql -u demo_user -pdemo_password demo_db < scripts/generate-more-data.sql
-```
-
-This script will:
-- Add **1000+ users** with realistic demographics across 13 countries
-- Add **200+ products** across 9 categories
-- Generate **~10,000 orders** (approximately 10 orders per user)
-- Generate **~5,000 user sessions** (approximately 5 sessions per user)
-
-**After generating more data:**
-
-1. **Re-sync to Iceberg** - Restart or trigger your OLake UI pipeline to sync the new data to MinIO
-2. **Refresh ClickHouse tables** - Re-run the setup script to update silver/gold layers:
-   ```bash
-   docker exec -i clickhouse-server clickhouse-client < scripts/iceberg-setup.sql
-   ```
-3. **Compare performance** - Run the performance comparison script:
-   ```bash
-   docker exec -i clickhouse-server clickhouse-client < scripts/compare-query-performance.sql
-   ```
-
-**Note:** The data generation script uses stored procedures and may take a few minutes to complete, especially for the orders table. Be patient!
 
 ---
 
@@ -478,7 +443,7 @@ This script runs the same queries against all three layers (raw Iceberg, silver,
 - **Use case recommendations** - When to use each layer
 - **Multiple query patterns** - Aggregations, time-based queries, complex filtering, distinct counts
 
-**Tip:** For meaningful performance differences, generate more data first using `./scripts/generate-more-data.sh`. With only ~30 orders, all queries will be fast. With 10,000+ orders, you'll see significant differences (raw Iceberg: seconds, silver: milliseconds, gold: milliseconds).
+**Tip:** The initial dataset includes 10,000+ orders, which is sufficient to demonstrate significant performance differences (raw Iceberg: seconds, silver: milliseconds, gold: milliseconds).
 
 Highlights inside the script:
 
