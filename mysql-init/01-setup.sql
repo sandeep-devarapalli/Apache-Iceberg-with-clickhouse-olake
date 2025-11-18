@@ -70,7 +70,7 @@ CREATE TABLE user_sessions (
     INDEX idx_last_activity (last_activity)
 );
 
--- Insert initial sample users (10 base users)
+-- Insert sample users
 INSERT INTO users (username, email, full_name, age, country, status) VALUES
 ('john_doe', 'john.doe@example.com', 'John Doe', 28, 'USA', 'active'),
 ('jane_smith', 'jane.smith@example.com', 'Jane Smith', 32, 'Canada', 'premium'),
@@ -79,11 +79,62 @@ INSERT INTO users (username, email, full_name, age, country, status) VALUES
 ('charlie_davis', 'charlie.davis@example.com', 'Charlie Davis', 35, 'Germany', 'inactive'),
 ('diana_miller', 'diana.miller@example.com', 'Diana Miller', 41, 'France', 'premium'),
 ('frank_garcia', 'frank.garcia@example.com', 'Frank Garcia', 26, 'Spain', 'active'),
-('grace_lee', 'grace.lee@example.com', 'Grace Lee', 33, 'Japan', 'active'),
+('grace_lee', 'grace.lee@example.com', 'Grace Lee', 33, 'South Korea', 'active'),
 ('henry_taylor', 'henry.taylor@example.com', 'Henry Taylor', 39, 'USA', 'active'),
 ('ivy_anderson', 'ivy.anderson@example.com', 'Ivy Anderson', 27, 'Canada', 'premium');
 
--- Generate 1000 additional users for performance testing
+-- Insert sample products
+INSERT INTO products (product_name, category, price, stock_quantity, is_active) VALUES
+('MacBook Pro 16"', 'Electronics', 2499.99, 50, TRUE),
+('iPhone 15 Pro', 'Electronics', 999.99, 200, TRUE),
+('Samsung Galaxy S24', 'Electronics', 899.99, 150, TRUE),
+('Dell XPS 13', 'Electronics', 1299.99, 75, TRUE),
+('iPad Air', 'Electronics', 599.99, 100, TRUE),
+('AirPods Pro', 'Electronics', 249.99, 300, TRUE),
+('Sony WH-1000XM5', 'Electronics', 399.99, 80, TRUE),
+('Mechanical Keyboard', 'Accessories', 129.99, 120, TRUE),
+('Wireless Mouse', 'Accessories', 79.99, 200, TRUE),
+('USB-C Hub', 'Accessories', 49.99, 150, TRUE),
+('Portable Monitor', 'Electronics', 299.99, 60, TRUE),
+('Webcam HD', 'Electronics', 89.99, 100, TRUE),
+('Bluetooth Speaker', 'Electronics', 159.99, 90, TRUE),
+('Gaming Chair', 'Furniture', 299.99, 40, TRUE),
+('Standing Desk', 'Furniture', 499.99, 25, TRUE);
+
+-- Insert sample orders
+INSERT INTO orders (user_id, product_id, quantity, unit_price, status, shipping_address, notes) VALUES
+(1, 1, 1, 2499.99, 'delivered', '123 Main St, New York, NY 10001', 'Rush delivery requested'),
+(1, 6, 2, 249.99, 'delivered', '123 Main St, New York, NY 10001', NULL),
+(2, 2, 1, 999.99, 'shipped', '456 Oak Ave, Toronto, ON M5V 3A8', 'Gift wrap requested'),
+(2, 8, 1, 129.99, 'delivered', '456 Oak Ave, Toronto, ON M5V 3A8', NULL),
+(3, 3, 1, 899.99, 'confirmed', '789 Pine Rd, London, UK SW1A 1AA', NULL),
+(4, 4, 1, 1299.99, 'pending', '321 Elm St, Sydney, NSW 2000', 'Business purchase'),
+(5, 5, 1, 599.99, 'cancelled', '654 Maple Dr, Berlin, Germany 10115', 'Customer changed mind'),
+(6, 7, 1, 399.99, 'delivered', '987 Cedar Ln, Paris, France 75001', NULL),
+(7, 9, 2, 79.99, 'shipped', '147 Birch Ave, Madrid, Spain 28001', NULL),
+(8, 10, 3, 49.99, 'delivered', '258 Spruce St, Seoul, South Korea 04524', 'Bulk order'),
+(9, 11, 1, 299.99, 'confirmed', '369 Willow Way, Los Angeles, CA 90210', NULL),
+(10, 12, 2, 89.99, 'pending', '741 Aspen Rd, Vancouver, BC V6B 1A1', 'Corporate order'),
+(1, 13, 1, 159.99, 'delivered', '123 Main St, New York, NY 10001', NULL),
+(3, 14, 1, 299.99, 'shipped', '789 Pine Rd, London, UK SW1A 1AA', 'Assembly required'),
+(6, 15, 1, 499.99, 'confirmed', '987 Cedar Ln, Paris, France 75001', 'White color preferred');
+
+-- Insert sample user sessions
+INSERT INTO user_sessions (user_id, session_token, ip_address, user_agent, is_active) VALUES
+(1, CONCAT('sess_john_', UNIX_TIMESTAMP()), '192.168.1.100', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', TRUE),
+(2, CONCAT('sess_jane_', UNIX_TIMESTAMP()), '192.168.1.101', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', TRUE),
+(3, CONCAT('sess_bob_', UNIX_TIMESTAMP()), '192.168.1.102', 'Mozilla/5.0 (X11; Linux x86_64)', FALSE),
+(4, CONCAT('sess_alice_', UNIX_TIMESTAMP()), '192.168.1.103', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0)', TRUE),
+(6, CONCAT('sess_diana_', UNIX_TIMESTAMP()), '192.168.1.105', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', TRUE),
+(7, CONCAT('sess_frank_', UNIX_TIMESTAMP()), '192.168.1.106', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', TRUE),
+(8, CONCAT('sess_grace_', UNIX_TIMESTAMP()), '192.168.1.107', 'Mozilla/5.0 (Android 13; Mobile)', TRUE),
+(9, CONCAT('sess_henry_', UNIX_TIMESTAMP()), '192.168.1.108', 'Mozilla/5.0 (iPad; CPU OS 16_0)', FALSE),
+(10, CONCAT('sess_ivy_', UNIX_TIMESTAMP()), '192.168.1.109', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', TRUE);
+
+-- Generate additional data for performance testing
+-- This will create ~1000 users, ~200 products, ~10,000 orders, and ~5,000 sessions
+
+-- Generate 1000 additional users
 INSERT INTO users (username, email, full_name, age, country, status, created_at)
 SELECT 
     CONCAT('user_', 10 + n) AS username,
@@ -108,25 +159,7 @@ FROM (
     WHERE a.N + b.N * 10 + c.N * 100 < 1000
 ) numbers;
 
--- Insert initial sample products (15 base products)
-INSERT INTO products (product_name, category, price, stock_quantity, is_active) VALUES
-('MacBook Pro 16"', 'Electronics', 2499.99, 50, TRUE),
-('iPhone 15 Pro', 'Electronics', 999.99, 200, TRUE),
-('Samsung Galaxy S24', 'Electronics', 899.99, 150, TRUE),
-('Dell XPS 13', 'Electronics', 1299.99, 75, TRUE),
-('iPad Air', 'Electronics', 599.99, 100, TRUE),
-('AirPods Pro', 'Electronics', 249.99, 300, TRUE),
-('Sony WH-1000XM5', 'Electronics', 399.99, 80, TRUE),
-('Mechanical Keyboard', 'Accessories', 129.99, 120, TRUE),
-('Wireless Mouse', 'Accessories', 79.99, 200, TRUE),
-('USB-C Hub', 'Accessories', 49.99, 150, TRUE),
-('Portable Monitor', 'Electronics', 299.99, 60, TRUE),
-('Webcam HD', 'Electronics', 89.99, 100, TRUE),
-('Bluetooth Speaker', 'Electronics', 159.99, 90, TRUE),
-('Gaming Chair', 'Furniture', 299.99, 40, TRUE),
-('Standing Desk', 'Furniture', 499.99, 25, TRUE);
-
--- Generate 200 additional products for performance testing
+-- Generate 200 additional products
 INSERT INTO products (product_name, category, price, stock_quantity, is_active, created_at)
 SELECT 
     CONCAT('Product ', 15 + n, ' - ', 
@@ -149,7 +182,7 @@ FROM (
     WHERE a.N + b.N * 10 < 200
 ) numbers;
 
--- Generate orders using stored procedure for better control
+-- Generate orders using stored procedure (approximately 10 orders per user)
 DELIMITER $$
 
 CREATE PROCEDURE IF NOT EXISTS generate_orders()
@@ -157,7 +190,6 @@ BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE v_user_id INT;
     DECLARE v_product_id INT;
-    DECLARE v_order_count INT;
     DECLARE i INT;
     DECLARE num_orders_per_user INT DEFAULT 10;
     
@@ -172,16 +204,13 @@ BEGIN
             LEAVE user_loop;
         END IF;
         
-        -- Generate orders for this user
         SET i = 0;
         WHILE i < num_orders_per_user DO
-            -- Pick a random product
             SELECT id INTO v_product_id 
             FROM products 
             ORDER BY RAND() 
             LIMIT 1;
             
-            -- Insert order
             INSERT INTO orders (user_id, product_id, quantity, unit_price, status, shipping_address, notes, order_date)
             SELECT 
                 v_user_id,
@@ -229,7 +258,6 @@ BEGIN
             LEAVE user_loop;
         END IF;
         
-        -- Generate 5 sessions for this user
         SET i = 0;
         WHILE i < 5 DO
             INSERT INTO user_sessions (user_id, session_token, ip_address, user_agent, is_active, login_time, last_activity)
