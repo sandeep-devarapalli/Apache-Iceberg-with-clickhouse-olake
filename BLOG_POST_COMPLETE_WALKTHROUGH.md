@@ -161,6 +161,22 @@ Verify counts:
 docker exec -it mysql-server mysql -u demo_user -pdemo_password -e "USE demo_db; SELECT COUNT(*) AS users FROM users; SELECT COUNT(*) AS orders FROM orders;"
 ```
 
+### 📊 Sample Data Overview
+
+The demo includes realistic e-commerce data:
+
+**Tables:**
+- **users** (20+ users) - Customer information with demographics
+- **products** (25+ products) - Product catalog across multiple categories
+- **orders** (30+ orders) - Purchase history with various statuses
+- **user_sessions** (15+ sessions) - User activity tracking
+
+**Geographic Distribution:**
+USA, Canada, UK, Germany, France, Spain, Japan, India, Australia, Norway, Brazil, Mexico, Singapore
+
+**Product Categories:**
+Electronics, Gaming, Software, Home, Health, Books, Education, Accessories, Furniture
+
 ---
 
 Inspect MySQL Data Before Syncing

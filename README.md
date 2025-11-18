@@ -88,4 +88,20 @@ docker-compose up -d
 3. Follow the blog to configure source/destination, run the pipeline, and query via ClickHouse
 4. Re-run `scripts/iceberg-setup.sql` + `scripts/cross-database-analytics.sql` whenever you load new data
 
+## 📊 Sample Data
+
+The demo includes realistic e-commerce data:
+
+### Tables
+- **users** (20+ users) - Customer information with demographics
+- **products** (25+ products) - Product catalog across multiple categories
+- **orders** (30+ orders) - Purchase history with various statuses
+- **user_sessions** (15+ sessions) - User activity tracking
+
+### Geographic Distribution
+USA, Canada, UK, Germany, France, Spain, Japan, India, Australia, Norway, Brazil, Mexico, Singapore
+
+### Product Categories
+Electronics, Gaming, Software, Home, Health, Books, Education, Accessories, Furniture
+
 For troubleshooting, scripts, and the full hands-on guide, jump into `BLOG_POST_COMPLETE_WALKTHROUGH.md`.
