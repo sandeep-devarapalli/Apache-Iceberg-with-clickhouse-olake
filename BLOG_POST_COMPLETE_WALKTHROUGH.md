@@ -78,7 +78,7 @@ Directory highlights:
 Bring Up the Core Services
 --------------------------
 
-The data plane (MySQL, MinIO, ClickHouse, PostgreSQL, helper clients) runs locally through Docker Compose. You still need to launch OLake's UI separately by following the [official installation guide](https://olake.io/docs/getting-started/overview); the rest of this post assumes you expose it at `http://localhost:8000`.
+First, start the data plane services (MySQL, MinIO, ClickHouse, PostgreSQL, helper clients):
 
 ```bash
 docker-compose up -d
@@ -91,10 +91,50 @@ docker-compose ps
 | `minio-server` | S3-compatible storage | API `http://localhost:9090`, Console `http://localhost:9091` |
 | `clickhouse-server` | Query engine | HTTP `http://localhost:8123`, Native `localhost:19000` |
 | `postgres-olake` | OLake metadata | `localhost:5432` |
-| *(External)* `olake-ui` | Web UI (run separately via OLake docs) | `http://localhost:8000` |
 | `clickhouse-client`, `mysql-client`, `minio-client` | Utility containers | used for scripts |
 
-The helper services wait on health checks so you can immediately log into MinIO and, once you launch the OLake UI container, connect it to this Docker network.
+---
+
+Launch OLake UI
+---------------
+
+According to the [OLake UI QuickStart guide](https://olake.io/docs/getting-started/quickstart/), you can start OLake UI with a single command. However, we need to connect it to our Docker network so it can communicate with MySQL, MinIO, and PostgreSQL.
+
+**Option 1: Quick setup (recommended)**
+
+Run OLake UI and connect it to our network:
+
+```bash
+# Start OLake UI
+curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
+
+# Connect OLake UI to our network (replace 'olake-ui_olake-ui' with your actual network name if different)
+docker network connect clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1) 2>/dev/null || \
+docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+```
+
+**Option 2: Manual network connection**
+
+If the above doesn't work, find the OLake UI container and connect it manually:
+
+```bash
+# Find the OLake UI container name
+docker ps | grep olake-ui
+
+# Connect to our network (replace CONTAINER_NAME with actual name)
+docker network connect clickhouse_lakehouse-net CONTAINER_NAME
+# OR if that network doesn't exist:
+docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net CONTAINER_NAME
+```
+
+**Access OLake UI:**
+- **URL**: http://localhost:8000
+- **Default credentials**: `admin` / `password`
+
+Once connected to the network, OLake UI will be able to reach:
+- MySQL at `mysql:3306` (internal Docker hostname)
+- MinIO at `minio:9000` (internal Docker hostname)
+- PostgreSQL at `postgres-olake:5432` (internal Docker hostname)
 
 ---
 
@@ -184,7 +224,16 @@ Prefer a quick checklist after your first read-through? Copy/paste these command
    ```
 2. **Confirm health**  
    `docker-compose ps`
-3. **Launch OLake UI** (per OLake docs) → log in at `http://localhost:8000`.
+3. **Launch OLake UI** and connect to network:
+   ```bash
+   # Start OLake UI (from official quickstart)
+   curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
+   
+   # Connect to our Docker network
+   docker network connect clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1) 2>/dev/null || \
+   docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+   ```
+   Then log in at `http://localhost:8000` with `admin` / `password`.
 4. **Configure OLake** using `olake-config/OLAKE_UI_PIPELINE.md`.
 5. **Start the pipeline** → verify MinIO (`http://localhost:9091`) shows `iceberg-warehouse/demo_lakehouse/<tables>`.
 6. **Smoke test Iceberg REST**

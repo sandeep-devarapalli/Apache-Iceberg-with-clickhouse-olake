@@ -65,7 +65,17 @@ docker-compose up -d
 
 ## 🧭 Next Steps
 
-1. Launch OLake UI per [official docs](https://olake.io/docs/)
+1. **Launch OLake UI** using the [official quickstart](https://olake.io/docs/getting-started/quickstart/):
+   ```bash
+   # Start OLake UI
+   curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
+   
+   # Connect to our Docker network (so it can reach MySQL, MinIO, PostgreSQL)
+   docker network connect clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1) 2>/dev/null || \
+   docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+   ```
+   Access at `http://localhost:8000` (default: `admin` / `password`)
+
 2. Follow the blog to configure source/destination, run the pipeline, and query via ClickHouse
 3. Re-run `scripts/iceberg-setup.sql` + `scripts/cross-database-analytics.sql` whenever you load new data
 
