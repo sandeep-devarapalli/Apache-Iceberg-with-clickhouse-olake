@@ -22,10 +22,6 @@
         <enable_experimental_lightweight_delete>1</enable_experimental_lightweight_delete>
     </iceberg>
     
-    <!-- Memory and performance settings -->
-    <max_memory_usage>10000000000</max_memory_usage>
-    <max_bytes_before_external_group_by>20000000000</max_bytes_before_external_group_by>
-    <max_bytes_before_external_sort>20000000000</max_bytes_before_external_sort>
     
     <!-- Network settings -->
     <listen_host>0.0.0.0</listen_host>
@@ -55,8 +51,5 @@
     <max_concurrent_queries>100</max_concurrent_queries>
     <max_server_memory_usage>0</max_server_memory_usage>
     
-    <!-- Experimental features -->
-    <allow_experimental_analyzer>1</allow_experimental_analyzer>
-    <allow_experimental_lightweight_delete>1</allow_experimental_lightweight_delete>
-    <allow_experimental_insert_into_iceberg>1</allow_experimental_insert_into_iceberg>
+    <!-- Experimental features are configured in users.xml -->
 </clickhouse>

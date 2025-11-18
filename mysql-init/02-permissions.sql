@@ -31,7 +31,7 @@ GRANT SELECT ON mysql.* TO 'olake'@'%';
 CREATE USER IF NOT EXISTS 'monitor'@'%' IDENTIFIED BY 'monitor_pass';
 GRANT PROCESS ON *.* TO 'monitor'@'%';
 GRANT SELECT ON performance_schema.* TO 'monitor'@'%';
-GRANT SELECT ON information_schema.* TO 'monitor'@'%';
+-- Note: information_schema is accessible to all users by default in MySQL 8.0, no grant needed
 
 -- Create demo user for manual testing
 CREATE USER IF NOT EXISTS 'demo_user'@'%' IDENTIFIED BY 'demo_password';
