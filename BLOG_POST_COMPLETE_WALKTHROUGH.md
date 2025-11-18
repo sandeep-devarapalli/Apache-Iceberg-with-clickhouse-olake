@@ -352,17 +352,32 @@ The data you see here was written via OLake’s UI, not by ClickHouse.
 
 ---
 
-Create Silver & Gold Tables in ClickHouse
------------------------------------------
+Create Silver & Gold Tables
+---------------------------
 
-While the Iceberg tables remain the raw “bronze” layer, ClickHouse can host optimized copies:
+The data architecture uses three layers for optimal performance:
 
-1. `scripts/iceberg-setup.sql` now refreshes two extra tables every time you run it:
-   * `ch_silver_orders` – a `MergeTree` copy of curated columns from `iceberg_orders_lakehouse`.
-   * `ch_gold_order_metrics` – a per-month, per-status aggregate that tracks user counts, order counts, gross revenue, and average order value.
-2. Why this matters:
-   * Raw Iceberg scans prove that ClickHouse can read OLake-managed data directly, but the query has to parse Iceberg metadata and pull Parquet files over the network.
-   * Silver/Gold tables live inside ClickHouse storage, so repeat queries hit local columnar data and return in milliseconds.
+1. **Raw Iceberg tables** (in MinIO) - Written by OLake from MySQL CDC
+   * Namespace: `demo_lakehouse`
+   * Unoptimized layout, all columns, original partitioning
+
+2. **Silver Iceberg tables** (in MinIO) - Written by ClickHouse as optimized Iceberg tables
+   * Namespace: `demo_lakehouse_silver`
+   * ClickHouse writes curated columns with optimized partitioning and file layout
+   * Faster than raw because ClickHouse optimizes the Iceberg table structure for querying
+
+3. **Gold tables** (in ClickHouse local storage) - Pre-aggregated KPIs
+   * `ch_gold_order_metrics` – a `MergeTree` table with pre-computed metrics
+   * Fastest queries, no computation needed
+
+`scripts/iceberg-setup.sql` creates:
+   * `iceberg_silver_orders` – an optimized Iceberg table in MinIO (namespace `demo_lakehouse_silver`) written by ClickHouse
+   * `ch_gold_order_metrics` – a per-month, per-status aggregate in ClickHouse local storage
+
+**Why this architecture matters:**
+   * **Raw Iceberg**: Proves ClickHouse can read OLake-managed data, but queries are slower due to unoptimized layout and network I/O
+   * **Silver Iceberg**: ClickHouse writes optimized Iceberg tables to MinIO with better partitioning, file sizes, and column selection, making queries faster than raw
+   * **Gold**: Pre-aggregated metrics in ClickHouse local storage provide instant dashboard queries
 3. **What are the KPIs in the Gold table?**
 
 The `ch_gold_order_metrics` table contains pre-aggregated Key Performance Indicators (KPIs) per month and status:
@@ -383,21 +398,21 @@ These KPIs are pre-computed from the silver layer, enabling instant dashboard qu
 SELECT status, COUNT(*) AS orders, AVG(total_amount) AS avg_value
 FROM iceberg_orders_lakehouse GROUP BY status;
 
--- Silver (ClickHouse MergeTree copy) - Local optimized storage
--- Expected: 50-200 milliseconds for 10,000+ orders
+-- Silver Iceberg (ClickHouse-written, optimized) - Queries MinIO via REST API
+-- Expected: 500ms-2 seconds for 10,000+ orders (faster than raw due to optimization)
 SELECT status, COUNT(*) AS orders, AVG(total_amount) AS avg_value
-FROM ch_silver_orders GROUP BY status;
+FROM iceberg_silver_orders GROUP BY status;
 
--- Gold (pre-aggregated KPIs) - Pre-computed metrics
+-- Gold (pre-aggregated KPIs) - ClickHouse local storage
 -- Expected: 10-50 milliseconds (fastest, no computation needed)
 SELECT status, SUM(order_count) AS orders, AVG(avg_order_value) AS avg_value
 FROM ch_gold_order_metrics GROUP BY status;
 ```
 
 **Performance expectations with 10,000+ orders:**
-- **Raw Iceberg**: 2-5 seconds (network I/O, Parquet parsing, REST API overhead)
-- **Silver**: 50-200 milliseconds (local columnar storage, optimized format)
-- **Gold**: 10-50 milliseconds (pre-aggregated, minimal computation)
+- **Raw Iceberg**: 2-5 seconds (network I/O, Parquet parsing, unoptimized layout)
+- **Silver Iceberg**: 500ms-2 seconds (ClickHouse-optimized Iceberg in MinIO, better partitioning and file layout)
+- **Gold**: 10-50 milliseconds (pre-aggregated metrics in ClickHouse local storage)
 
 Run the script again whenever OLake lands new data and you want to refresh the ClickHouse-managed tiers:
 
@@ -450,10 +465,10 @@ SELECT status, COUNT(*) AS orders, ROUND(AVG(total_amount), 2) AS avg_value
 FROM iceberg_orders_lakehouse GROUP BY status
 " --format=Pretty --time
 
-# Silver
+# Silver Iceberg (optimized, in MinIO)
 docker exec -it clickhouse-client clickhouse-client --host clickhouse --query "
 SELECT status, COUNT(*) AS orders, ROUND(AVG(total_amount), 2) AS avg_value
-FROM ch_silver_orders GROUP BY status
+FROM iceberg_silver_orders GROUP BY status
 " --format=Pretty --time
 
 # Gold
@@ -464,13 +479,20 @@ FROM ch_gold_order_metrics GROUP BY status
 ```
 
 **Expected performance with 10,000+ orders:**
-- **Raw Iceberg**: 2-5 seconds (network I/O, Parquet parsing, REST API overhead)
-- **Silver**: 50-200 milliseconds (local columnar storage, optimized format)
-- **Gold**: 10-50 milliseconds (pre-aggregated, minimal computation)
+- **Raw Iceberg**: 2-5 seconds (network I/O, Parquet parsing, unoptimized layout)
+- **Silver Iceberg**: 500ms-2 seconds (ClickHouse-optimized Iceberg in MinIO, better partitioning and file layout)
+- **Gold**: 10-50 milliseconds (pre-aggregated metrics in ClickHouse local storage)
+
+**Key insight:** Silver tables are faster than raw because ClickHouse writes them as optimized Iceberg tables in MinIO with:
+- Better partitioning strategy (optimized for common query patterns)
+- Optimized file sizes and Parquet compression
+- Curated columns (only frequently queried columns)
+- Better metadata organization
 
 Highlights inside the script:
 
-* Benchmark the raw Iceberg scans coming directly from the REST catalog/MinIO against the Silver `MergeTree` copy.
+* Benchmark the raw Iceberg scans (unoptimized) against the Silver optimized Iceberg table (both in MinIO).
+* Compare Silver Iceberg (ClickHouse-written, optimized) with Gold (pre-aggregated in ClickHouse local storage).
 * Read pre-aggregated KPIs out of the Gold table for BI-friendly latency.
 
 You can also explore on your own:

@@ -15,10 +15,10 @@ echo ""
 time docker exec -i clickhouse-server clickhouse-client --query "$QUERY iceberg_orders_lakehouse GROUP BY status ORDER BY orders DESC" --format=Pretty 2>&1 | head -20
 echo ""
 
-echo "--- SILVER (ClickHouse MergeTree) ---"
-echo "Query: $QUERY ch_silver_orders GROUP BY status"
+echo "--- SILVER (Optimized Iceberg in MinIO) ---"
+echo "Query: $QUERY iceberg_silver_orders GROUP BY status"
 echo ""
-time docker exec -i clickhouse-server clickhouse-client --query "$QUERY ch_silver_orders GROUP BY status ORDER BY orders DESC" --format=Pretty 2>&1 | head -20
+time docker exec -i clickhouse-server clickhouse-client --query "$QUERY iceberg_silver_orders GROUP BY status ORDER BY orders DESC" --format=Pretty 2>&1 | head -20
 echo ""
 
 echo "--- GOLD (Pre-aggregated KPIs) ---"
@@ -34,7 +34,7 @@ echo "  - user: CPU time spent in user mode"
 echo "  - sys: CPU time spent in system mode"
 echo ""
 echo "Expected differences with 10,000+ orders:"
-echo "  - Raw Iceberg: 2-5 seconds (network I/O, Parquet parsing)"
-echo "  - Silver: 50-200 milliseconds (local optimized storage)"
-echo "  - Gold: 10-50 milliseconds (pre-aggregated metrics)"
+echo "  - Raw Iceberg: 2-5 seconds (network I/O, Parquet parsing, unoptimized layout)"
+echo "  - Silver Iceberg: 500ms-2 seconds (ClickHouse-optimized Iceberg in MinIO, better partitioning)"
+echo "  - Gold: 10-50 milliseconds (pre-aggregated metrics in ClickHouse local storage)"
 

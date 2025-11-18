@@ -42,9 +42,15 @@ CREATE TABLE iceberg_user_sessions_lakehouse
 ENGINE = Iceberg('rest', catalog_endpoint, catalog_namespace, 'user_sessions', catalog_user, catalog_password);
 SELECT 'Iceberg user_sessions rows' AS metric, COUNT(*) AS value FROM iceberg_user_sessions_lakehouse;
 
--- Create ClickHouse-managed "silver" layer for frequently queried columns
-DROP TABLE IF EXISTS ch_silver_orders;
-CREATE TABLE ch_silver_orders
+-- Create ClickHouse-managed "silver" layer as optimized Iceberg tables in MinIO
+-- Silver tables are written by ClickHouse to MinIO as Iceberg tables, optimized for querying
+DROP TABLE IF EXISTS iceberg_silver_orders;
+WITH
+    'http://olake-ui:8181/api/catalog' AS catalog_endpoint,
+    'demo_lakehouse_silver' AS catalog_namespace,
+    'admin' AS catalog_user,
+    'password' AS catalog_password
+CREATE TABLE iceberg_silver_orders
 (
     order_id Int32,
     user_id Int32,
@@ -53,21 +59,22 @@ CREATE TABLE ch_silver_orders
     order_month Date,
     order_date DateTime,
     total_amount Decimal(12, 2)
-) ENGINE = MergeTree
-ORDER BY (order_month, status, user_id, order_id);
+) ENGINE = Iceberg('rest', catalog_endpoint, catalog_namespace, 'orders', catalog_user, catalog_password);
 
-INSERT INTO ch_silver_orders
+-- Insert optimized data from raw Iceberg table into silver Iceberg table
+-- ClickHouse writes this as an optimized Iceberg table in MinIO
+INSERT INTO iceberg_silver_orders
 SELECT 
-    id,
+    id AS order_id,
     user_id,
     product_id,
     status,
-    toDate(order_date),
+    toDate(order_date) AS order_month,
     order_date,
     total_amount
 FROM iceberg_orders_lakehouse;
 
-SELECT 'Silver orders rows' AS metric, COUNT(*) AS value FROM ch_silver_orders;
+SELECT 'Silver orders rows (Iceberg in MinIO)' AS metric, COUNT(*) AS value FROM iceberg_silver_orders;
 
 -- Create ClickHouse-managed "gold" layer for aggregated KPIs
 DROP TABLE IF EXISTS ch_gold_order_metrics;
@@ -90,7 +97,7 @@ SELECT
     count() AS order_count,
     sum(total_amount) AS gross_revenue,
     round(sum(total_amount) / NULLIF(count(), 0), 2) AS avg_order_value
-FROM ch_silver_orders
+FROM iceberg_silver_orders
 GROUP BY order_month, status;
 
 SELECT 'Gold metrics rows' AS metric, COUNT(*) AS value FROM ch_gold_order_metrics;

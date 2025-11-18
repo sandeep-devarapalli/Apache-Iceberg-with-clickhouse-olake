@@ -21,11 +21,11 @@ FROM iceberg_orders_lakehouse
 GROUP BY status
 ORDER BY order_count DESC;
 
-SELECT 'SILVER (MergeTree)' AS layer,
+SELECT 'SILVER (Optimized Iceberg in MinIO)' AS layer,
        status,
        COUNT(*) AS order_count,
        ROUND(AVG(total_amount), 2) AS avg_order_value
-FROM ch_silver_orders
+FROM iceberg_silver_orders
 GROUP BY status
 ORDER BY order_count DESC;
 
