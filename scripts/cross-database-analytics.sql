@@ -1,34 +1,38 @@
-SELECT 'CROSS-DATABASE ANALYTICS DEMONSTRATION' as title;
+SELECT 'ICEBERG ANALYTICS DEMONSTRATION' as title;
 
--- Real-time data from MySQL
-SELECT 'Real-time MySQL Data (Live):' as source;
+-- Raw tables served via the Iceberg REST catalog
+SELECT 'Raw Iceberg Orders (REST Catalog)' as source;
 SELECT 
     status,
-    COUNT(*) as user_count,
-    groupArray(username) as users
-FROM mysql_users_test 
+    COUNT(*) as order_count,
+    ROUND(AVG(total_amount), 2) as avg_order_value,
+    MIN(order_date) as first_order,
+    MAX(order_date) as most_recent_order
+FROM iceberg_orders_lakehouse
 GROUP BY status
-ORDER BY user_count DESC;
+ORDER BY order_count DESC;
 
--- Historical data from Iceberg  
-SELECT 'Historical Iceberg Data (Data Lake):' as source;
-SELECT 
-    country,
-    COUNT(*) as user_count,
-    ROUND(AVG(total_spent), 2) as avg_spent,
-    SUM(order_count) as total_orders
-FROM iceberg_blog_demo
-GROUP BY country
-ORDER BY avg_spent DESC;
+-- Raw vs optimized ClickHouse layers
+SELECT 'RAW ICEBERG (REST)' AS layer,
+       status,
+       COUNT(*) AS order_count,
+       ROUND(AVG(total_amount), 2) AS avg_order_value
+FROM iceberg_orders_lakehouse
+GROUP BY status
+ORDER BY order_count DESC;
 
--- Data source comparison
-SELECT 'DATA SOURCE COMPARISON:' as analysis_type;
-SELECT 
-    'MySQL (Real-time)' as source,
-    COUNT(*) as total_users
-FROM mysql_users_test
-UNION ALL
-SELECT 
-    'Iceberg (Data Lake)' as source,
-    COUNT(*) as total_users  
-FROM iceberg_blog_demo;
+SELECT 'SILVER (MergeTree)' AS layer,
+       status,
+       COUNT(*) AS order_count,
+       ROUND(AVG(total_amount), 2) AS avg_order_value
+FROM ch_silver_orders
+GROUP BY status
+ORDER BY order_count DESC;
+
+SELECT 'GOLD (Aggregated KPIs)' AS layer,
+       status,
+       SUM(order_count) AS aggregated_orders,
+       ROUND(AVG(avg_order_value), 2) AS avg_order_value
+FROM ch_gold_order_metrics
+GROUP BY status
+ORDER BY aggregated_orders DESC;

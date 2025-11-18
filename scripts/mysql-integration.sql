@@ -1,15 +1,18 @@
--- Create MySQL engine tables for real-time connectivity
-CREATE TABLE mysql_users_test (
-    id Int32,
-    username String,
-    email String,
-    full_name String,
-    age Nullable(Int32),
-    country Nullable(String),
-    status String,
-    created_at DateTime,
-    updated_at DateTime
-) ENGINE = MySQL('mysql:3306', 'demo_db', 'users', 'olake', 'olake_pass');
+-- Smoke test: query the Iceberg REST catalog directly (no MySQL engine tables)
+SET allow_experimental_insert_into_iceberg = 1;
 
--- Test the connection
-SELECT 'MySQL Integration Test:' as test, COUNT(*) as user_count FROM mysql_users_test;
+WITH
+    'http://olake-ui:8181/api/catalog' AS catalog_endpoint,
+    'demo_lakehouse' AS catalog_namespace,
+    'admin' AS catalog_user,
+    'password' AS catalog_password
+SELECT 'Iceberg REST Orders Rows' AS test,
+       COUNT(*) AS row_count
+FROM iceberg(
+    'rest',
+    catalog_endpoint,
+    catalog_namespace,
+    'orders',
+    catalog_user,
+    catalog_password
+);

@@ -1,31 +1,96 @@
--- Enable experimental Iceberg features
 SET allow_experimental_insert_into_iceberg = 1;
+SET use_iceberg_partition_pruning = 1;
+SET use_iceberg_metadata_files_cache = 1;
 
--- Drop table if exists (for clean runs)
-DROP TABLE IF EXISTS iceberg_blog_demo;
+DROP TABLE IF EXISTS iceberg_users_lakehouse;
+WITH
+    'http://olake-ui:8181/api/catalog' AS catalog_endpoint,
+    'demo_lakehouse' AS catalog_namespace,
+    'admin' AS catalog_user,
+    'password' AS catalog_password
+CREATE TABLE iceberg_users_lakehouse
+ENGINE = Iceberg('rest', catalog_endpoint, catalog_namespace, 'users', catalog_user, catalog_password);
+SELECT 'Iceberg users rows' AS metric, COUNT(*) AS value FROM iceberg_users_lakehouse;
 
--- Create Iceberg table
-CREATE TABLE iceberg_blog_demo (
-    id Int32,
-    username String,
-    email String,
-    country String,
-    order_count Int32,
-    total_spent Float64,
-    demo_timestamp DateTime DEFAULT now()
-) ENGINE = IcebergS3('http://minio:9000/iceberg-warehouse/blog-demo-new/', 'minioadmin', 'minioadmin123');
+DROP TABLE IF EXISTS iceberg_products_lakehouse;
+WITH
+    'http://olake-ui:8181/api/catalog' AS catalog_endpoint,
+    'demo_lakehouse' AS catalog_namespace,
+    'admin' AS catalog_user,
+    'password' AS catalog_password
+CREATE TABLE iceberg_products_lakehouse
+ENGINE = Iceberg('rest', catalog_endpoint, catalog_namespace, 'products', catalog_user, catalog_password);
+SELECT 'Iceberg products rows' AS metric, COUNT(*) AS value FROM iceberg_products_lakehouse;
 
--- Insert data from MySQL into Iceberg
-INSERT INTO iceberg_blog_demo (id, username, email, country, order_count, total_spent)
+DROP TABLE IF EXISTS iceberg_orders_lakehouse;
+WITH
+    'http://olake-ui:8181/api/catalog' AS catalog_endpoint,
+    'demo_lakehouse' AS catalog_namespace,
+    'admin' AS catalog_user,
+    'password' AS catalog_password
+CREATE TABLE iceberg_orders_lakehouse
+ENGINE = Iceberg('rest', catalog_endpoint, catalog_namespace, 'orders', catalog_user, catalog_password);
+SELECT 'Iceberg orders rows' AS metric, COUNT(*) AS value FROM iceberg_orders_lakehouse;
+
+DROP TABLE IF EXISTS iceberg_user_sessions_lakehouse;
+WITH
+    'http://olake-ui:8181/api/catalog' AS catalog_endpoint,
+    'demo_lakehouse' AS catalog_namespace,
+    'admin' AS catalog_user,
+    'password' AS catalog_password
+CREATE TABLE iceberg_user_sessions_lakehouse
+ENGINE = Iceberg('rest', catalog_endpoint, catalog_namespace, 'user_sessions', catalog_user, catalog_password);
+SELECT 'Iceberg user_sessions rows' AS metric, COUNT(*) AS value FROM iceberg_user_sessions_lakehouse;
+
+-- Create ClickHouse-managed "silver" layer for frequently queried columns
+DROP TABLE IF EXISTS ch_silver_orders;
+CREATE TABLE ch_silver_orders
+(
+    order_id Int32,
+    user_id Int32,
+    product_id Int32,
+    status LowCardinality(String),
+    order_month Date,
+    order_date DateTime,
+    total_amount Decimal(12, 2)
+) ENGINE = MergeTree
+ORDER BY (order_month, status, user_id, order_id);
+
+INSERT INTO ch_silver_orders
 SELECT 
     id,
-    username,
-    email,
-    status as country,
-    id * 2 as order_count,
-    id * 299.99 as total_spent
-FROM mysql_users_test 
-LIMIT 8;
+    user_id,
+    product_id,
+    status,
+    toDate(order_date),
+    order_date,
+    total_amount
+FROM iceberg_orders_lakehouse;
 
--- Verify Iceberg data
-SELECT 'Iceberg Table Created:' as status, COUNT(*) as records FROM iceberg_blog_demo;
+SELECT 'Silver orders rows' AS metric, COUNT(*) AS value FROM ch_silver_orders;
+
+-- Create ClickHouse-managed "gold" layer for aggregated KPIs
+DROP TABLE IF EXISTS ch_gold_order_metrics;
+CREATE TABLE ch_gold_order_metrics
+(
+    order_month Date,
+    status LowCardinality(String),
+    user_count UInt64,
+    order_count UInt64,
+    gross_revenue Decimal(18, 2),
+    avg_order_value Decimal(18, 2)
+) ENGINE = MergeTree
+ORDER BY (order_month, status);
+
+INSERT INTO ch_gold_order_metrics
+SELECT 
+    order_month,
+    status,
+    uniqExact(user_id) AS user_count,
+    count() AS order_count,
+    sum(total_amount) AS gross_revenue,
+    round(sum(total_amount) / NULLIF(count(), 0), 2) AS avg_order_value
+FROM ch_silver_orders
+GROUP BY order_month, status;
+
+SELECT 'Gold metrics rows' AS metric, COUNT(*) AS value FROM ch_gold_order_metrics;
