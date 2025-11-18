@@ -61,7 +61,6 @@
             <parallel_replica_offset>0</parallel_replica_offset>
             <skip_unavailable_shards>0</skip_unavailable_shards>
             <distributed_group_by_no_merge>0</distributed_group_by_no_merge>
-            <merge_tree_uniform_read_distribution>1</merge_tree_uniform_read_distribution>
             <optimize_skip_unused_partitions>1</optimize_skip_unused_partitions>
             <optimize_skip_unused_partitions_rewrite_in>1</optimize_skip_unused_partitions_rewrite_in>
             <distributed_aggregation_memory_efficient>0</distributed_aggregation_memory_efficient>
