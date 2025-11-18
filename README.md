@@ -69,10 +69,11 @@ docker-compose up -d
    # Start OLake UI (complete stack with PostgreSQL, Temporal, Elasticsearch)
    curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
    
-   # Connect OLake UI container to our network (so it can reach MySQL, MinIO)
+   # Connect OLake UI container to our network (auto-detects network name)
    OLAKE_CONTAINER=$(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
-   docker network connect clickhouse_lakehouse-net $OLAKE_CONTAINER 2>/dev/null || \
-   docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $OLAKE_CONTAINER
+   NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --format "{{.Name}}" | head -1)
+   docker network connect $NETWORK_NAME $OLAKE_CONTAINER
+   echo "Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
    ```
    Access at `http://localhost:8000` (default: `admin` / `password`)
    

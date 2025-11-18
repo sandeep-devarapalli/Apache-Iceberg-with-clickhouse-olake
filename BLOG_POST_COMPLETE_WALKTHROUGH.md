@@ -123,11 +123,13 @@ OLake UI runs in its own Docker network. To allow it to reach our MySQL and MinI
 # Find the OLake UI container name
 OLAKE_CONTAINER=$(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
 
-# Connect to our network
-docker network connect clickhouse_lakehouse-net $OLAKE_CONTAINER 2>/dev/null || \
-docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $OLAKE_CONTAINER
+# Auto-detect our network name (based on directory name)
+NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --format "{{.Name}}" | head -1)
 
-echo "Connected $OLAKE_CONTAINER to network"
+# Connect to our network
+docker network connect $NETWORK_NAME $OLAKE_CONTAINER
+
+echo "Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
 ```
 
 **Access OLake UI:**
@@ -236,8 +238,9 @@ Prefer a quick checklist after your first read-through? Copy/paste these command
    
    # Connect OLake UI container to our network so it can reach MySQL/MinIO
    OLAKE_CONTAINER=$(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
-   docker network connect clickhouse_lakehouse-net $OLAKE_CONTAINER 2>/dev/null || \
-   docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $OLAKE_CONTAINER
+   NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --format "{{.Name}}" | head -1)
+   docker network connect $NETWORK_NAME $OLAKE_CONTAINER
+   echo "Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
    ```
    Then log in at `http://localhost:8000` with `admin` / `password`.
 4. **Configure OLake** using `olake-config/OLAKE_UI_PIPELINE.md`.
