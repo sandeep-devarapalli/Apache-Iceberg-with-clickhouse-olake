@@ -54,8 +54,8 @@ graph TD
 ## 🚀 Quick Start
 
 ```bash
-git clone <this-repo>
-cd clickhouse-mysql-olake-demo
+git clone https://github.com/sandeep-devarapalli/Apache-Iceberg-with-clickhouse-olake.git
+cd Apache-Iceberg-with-clickhouse-olake
 docker-compose up -d
 ```
 

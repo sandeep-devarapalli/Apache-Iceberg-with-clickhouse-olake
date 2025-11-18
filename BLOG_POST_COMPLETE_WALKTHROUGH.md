@@ -60,8 +60,8 @@ Clone the Repo & Understand the Layout
 --------------------------------------
 
 ```bash
-git clone <repo-url> clickhouse-mysql-olake-demo
-cd clickhouse-mysql-olake-demo
+git clone https://github.com/sandeep-devarapalli/Apache-Iceberg-with-clickhouse-olake.git
+cd Apache-Iceberg-with-clickhouse-olake
 tree -F -L 1
 ```
 
@@ -178,8 +178,8 @@ Prefer a quick checklist after your first read-through? Copy/paste these command
 
 1. **Clone & boot**
    ```bash
-   git clone <repo-url> clickhouse-mysql-olake-demo
-   cd clickhouse-mysql-olake-demo
+   git clone https://github.com/sandeep-devarapalli/Apache-Iceberg-with-clickhouse-olake.git
+   cd Apache-Iceberg-with-clickhouse-olake
    docker-compose up -d
    ```
 2. **Confirm health**  
