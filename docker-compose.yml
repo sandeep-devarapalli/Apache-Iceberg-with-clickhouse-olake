@@ -123,30 +123,8 @@ services:
     tty: true
     command: tail -f /dev/null
 
-  # PostgreSQL for OLake metadata
-  postgres:
-    image: postgres:15
-    container_name: postgres-olake
-    environment:
-      POSTGRES_DB: olake
-      POSTGRES_USER: olake_user
-      POSTGRES_PASSWORD: olake_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - clickhouse_lakehouse-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U olake_user -d olake"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # OLake - Will be set up separately using CLI approach
-  # Following https://olake.io/docs/install approach
-  # olake:
-  #   # We'll install OLake CLI manually for better control
+  # Note: OLake UI runs as a separate Docker Compose stack with its own PostgreSQL, Temporal, Elasticsearch
+  # See blog instructions for connecting OLake UI to this network
 
   # MySQL Client for easy database access
   mysql-client:
@@ -168,8 +146,6 @@ volumes:
   minio-data:
   clickhouse-data:
   clickhouse-logs:
-  postgres-data:
-  olake-data:
 
 networks:
   clickhouse_lakehouse-net:

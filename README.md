@@ -48,8 +48,7 @@ graph TD
 - **MySQL 8.0** - Source database with sample e-commerce data
 - **ClickHouse 24.11** - Analytics database with experimental Iceberg support
 - **MinIO** - S3-compatible object storage for Iceberg tables
-- **OLake** - Data lake orchestration and CDC platform
-- **PostgreSQL** - Metadata store for OLake
+- **OLake UI** - Data lake orchestration and CDC platform (includes its own PostgreSQL, Temporal, Elasticsearch)
 
 ## 🚀 Quick Start
 
@@ -59,22 +58,25 @@ cd Apache-Iceberg-with-clickhouse-olake
 docker-compose up -d
 ```
 
-- Services: MySQL, MinIO, ClickHouse, PostgreSQL helper components
-- Bring your own OLake UI + REST catalog (see blog for full walkthrough)
+- Services: MySQL, MinIO, ClickHouse, helper clients
+- OLake UI runs as a separate stack (includes its own PostgreSQL, Temporal, Elasticsearch)
 - Detailed instructions live in `BLOG_POST_COMPLETE_WALKTHROUGH.md`
 
 ## 🧭 Next Steps
 
 1. **Launch OLake UI** using the [official quickstart](https://olake.io/docs/getting-started/quickstart/):
    ```bash
-   # Start OLake UI
+   # Start OLake UI (complete stack with PostgreSQL, Temporal, Elasticsearch)
    curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
    
-   # Connect to our Docker network (so it can reach MySQL, MinIO, PostgreSQL)
-   docker network connect clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1) 2>/dev/null || \
-   docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+   # Connect OLake UI container to our network (so it can reach MySQL, MinIO)
+   OLAKE_CONTAINER=$(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+   docker network connect clickhouse_lakehouse-net $OLAKE_CONTAINER 2>/dev/null || \
+   docker network connect apache-iceberg-with-clickhouse-olake_clickhouse_lakehouse-net $OLAKE_CONTAINER
    ```
    Access at `http://localhost:8000` (default: `admin` / `password`)
+   
+   **Important:** In OLake UI, use Docker hostnames: `mysql:3306` and `minio:9000` (not localhost)
 
 2. Follow the blog to configure source/destination, run the pipeline, and query via ClickHouse
 3. Re-run `scripts/iceberg-setup.sql` + `scripts/cross-database-analytics.sql` whenever you load new data
