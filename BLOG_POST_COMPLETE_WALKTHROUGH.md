@@ -154,6 +154,10 @@ docker network connect $NETWORK_NAME $OLAKE_CONTAINER
 echo "Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
 ```
 
+# Clean up and restart
+docker rm -f olake-ui olake-temporal-worker olake-signup-init 2>/dev/null
+docker network rm olake-network 2>/dev/null
+
 **Access OLake UI:**
 - **URL**: http://localhost:8000
 - **Default credentials**: `admin` / `password`
@@ -181,13 +185,6 @@ The MySQL container automatically executes:
   * `olake / olake_pass` (CDC + replication privileges for OLake UI).
   * `demo_user / demo_password` (for manual testing and inspection).
   
-**Note:** ClickHouse does not require a MySQL user because it queries Iceberg tables via the REST catalog, not MySQL directly.
-
-Verify counts:
-
-```bash
-docker exec -it mysql-server mysql -u demo_user -pdemo_password -e "USE demo_db; SELECT COUNT(*) AS users FROM users; SELECT COUNT(*) AS orders FROM orders;"
-```
 
 ### 📊 Sample Data Overview
 
@@ -219,143 +216,160 @@ Before configuring OLake UI, you may want to inspect what data is available in M
 ./scripts/inspect-mysql-data.sh
 ```
 
-This script shows row counts, sample data, and data distribution for all tables.
-
-**Manual commands:**
-
-**Quick overview of all tables and row counts:**
-
-```bash
-docker exec -it mysql-server mysql -u demo_user -pdemo_password demo_db -e "
-SELECT 
-    'users' as table_name, COUNT(*) as row_count FROM users
-UNION ALL
-SELECT 'products', COUNT(*) FROM products
-UNION ALL
-SELECT 'orders', COUNT(*) FROM orders
-UNION ALL
-SELECT 'user_sessions', COUNT(*) FROM user_sessions;"
-```
-
-**View sample data from each table:**
-
-```bash
-# Sample users
-docker exec -it mysql-server mysql -u demo_user -pdemo_password demo_db -e "SELECT id, username, email, status, country FROM users LIMIT 5;"
-
-# Sample products
-docker exec -it mysql-server mysql -u demo_user -pdemo_password demo_db -e "SELECT id, product_name, category, price, stock_quantity FROM products LIMIT 5;"
-
-# Sample orders
-docker exec -it mysql-server mysql -u demo_user -pdemo_password demo_db -e "SELECT id, user_id, product_id, quantity, total_amount, status, order_date FROM orders LIMIT 5;"
-
-# Sample user sessions
-docker exec -it mysql-server mysql -u demo_user -pdemo_password demo_db -e "SELECT id, user_id, session_token, login_time, is_active FROM user_sessions LIMIT 5;"
-```
-
 
 Prepare ClickHouse for the Iceberg REST Catalog
 -----------------------------------------------
 
 ClickHouse ships with experimental Iceberg support disabled by default. The repo already enables the necessary flags inside `clickhouse-config/config.xml` and expects an Iceberg REST catalog provided by OLake (default: `http://olake-ui:8181/api/catalog`, namespace `demo_lakehouse`, credentials `admin/password`). Update the constants in `scripts/iceberg-setup.sql` and `scripts/mysql-integration.sql` if your catalog endpoint or credentials differ.
 
-Once the container is healthy you can jump straight into the OLake pipeline steps. There is no need to create MySQL engine tables because ClickHouse never queries MySQL in this architecture; all reads go through the REST catalog to the raw Iceberg data stored in MinIO.
-
+Once the container is healthy you can jump straight into the OLake pipeline steps. 
 ---
 
-Configure OLake UI (Source + Destination)
------------------------------------------
+Configure OLake UI: Step-by-Step Guide
+---------------------------------------
 
-Open `http://localhost:8000` and log in with `admin / password`. Follow `olake-config/OLAKE_UI_PIPELINE.md` for the exact field values—every screen is documented. Summary:
+Now that OLake UI is running, let's configure it to replicate data from MySQL to Iceberg tables in MinIO. Open your browser and navigate to `http://localhost:8000`. You'll see the OLake UI login page.
 
-1. **Source** → MySQL
-   * Host `mysql`, port `3306`, database `demo_db`.
-   * User `olake`, password `olake_pass`.
-   * Tables: `users`, `products`, `orders`, `user_sessions`.
-   * CDC enabled, chunk size `1000`.
+**Step 1: Log in to OLake UI**
 
-2. **Destination** → Iceberg (Hadoop catalog)
-   * Warehouse `s3a://iceberg-warehouse/`.
-   * Endpoint `http://minio:9000`, credentials `minioadmin / minioadmin123`, region `us-east-1`, path-style access ON.
-   * File format `Parquet`, compression `snappy`.
+- URL: `http://localhost:8000`
+- Username: `admin`
+- Password: `password`
 
-3. **Per-table settings**
-   * Namespace `demo_lakehouse`.
-   * Partition strategies:
-     * `users`: `month(created_at)` + `identity(country)`
-     * `products`: `identity(category)`
-     * `orders`: `month(order_date)` + `identity(status)`
-     * `user_sessions`: `day(login_time)`
-   * Write mode `upsert`, merge strategy `merge_on_read`.
+Once logged in, you'll see the OLake dashboard. We need to configure two things: a **Source** (MySQL) and a **Destination** (Iceberg on MinIO).
 
-Save both resources—we will start the pipeline in the next section.
+**Step 2: Register the MySQL Source**
 
----
+1. In the left sidebar, click on **Sources**, then click **New Source**.
+2. Select **MySQL** as the source type.
+3. Fill in the connection details:
+   - **Host**: `mysql` (use the Docker hostname, not `localhost`)
+   - **Port**: `3306`
+   - **Database**: `demo_db`
+   - **Username**: `olake`
+   - **Password**: `olake_pass`
+   - **Enable SSL**: Leave this unchecked (set to `false`)
+4. Click **Next** or **Test Connection** to verify the connection works.
+5. Select the tables you want to replicate:
+   - ✅ `users`
+   - ✅ `products`
+   - ✅ `orders`
+   - ✅ `user_sessions`
+6. In the advanced options:
+   - **Chunk Size**: `1000` (number of rows to process per batch)
+   - **CDC (Change Data Capture)**: Enable this checkbox (it will use the binlog we configured in MySQL)
+7. Click **Save** or **Create Source**.
 
-Create and Run the OLake UI Pipeline
-------------------------------------
+Great! Your MySQL source is now registered. OLake will use the binlog to capture changes in real-time.
 
-1. From the pipeline dashboard, select the source + destination you just configured and create a new pipeline (either per table or a single multi-table pipeline).
-2. Click **Start Pipeline**. OLake will take an initial snapshot followed by incremental binlog ingestion.
-3. Watch the progress bar or open MinIO’s console at `http://localhost:9091` to see new folders appear under `iceberg-warehouse/demo_lakehouse/`.
+**Step 3: Register the Iceberg Destination (MinIO)**
 
-CLI check:
+1. In the left sidebar, click on **Destinations**, then click **New Destination**.
+2. Select **Iceberg (S3/Hadoop catalog)** as the destination type.
+3. In the **Catalog** section:
+   - **Type**: Select `hadoop`
+   - **Warehouse**: `s3a://iceberg-warehouse/` (this is the S3 path where Iceberg tables will be stored)
+   - **Metastore URI**: Leave this blank (MinIO doesn't need Hive Metastore for this demo)
+4. In the **Storage** section (this connects to MinIO):
+   - **Endpoint**: `http://minio:9000` (use Docker hostname, not `localhost`)
+   - **Access Key**: `minioadmin`
+   - **Secret Key**: `minioadmin123`
+   - **Region**: `us-east-1`
+   - **Bucket**: `iceberg-warehouse`
+   - **Path Style Access**: Enable this checkbox (required for MinIO)
+   - **SSL**: Leave unchecked (disabled)
+5. In the **Format** section:
+   - **File Format**: `Parquet`
+   - **Compression**: `snappy`
+6. Enable partitioning (this will be configured per-table in the pipeline).
+7. Click **Save** or **Create Destination**.
+
+Perfect! Now OLake knows where to write the Iceberg tables. The destination is configured to use MinIO as an S3-compatible storage backend.
+
+**Step 4: Create and Configure the Pipeline**
+
+Now we'll create a pipeline that connects the MySQL source to the Iceberg destination. You can create either:
+- A single multi-table pipeline (recommended for this demo), or
+- Separate pipelines for each table
+
+1. In the left sidebar, click on **Pipelines**, then click **New Pipeline** or **Create Pipeline**.
+2. Select your MySQL source (the one you just created).
+3. Select your Iceberg destination (the one you just created).
+4. Configure per-table settings. For each table, set:
+
+   | Table | Namespace | Destination Table | Partition Strategy | Primary Key |
+   |-------|-----------|-------------------|-------------------|-------------|
+   | `users` | `demo_lakehouse` | `users` | `month(created_at)`, `identity(country)` | `id` |
+   | `products` | `demo_lakehouse` | `products` | `identity(category)` | `id` |
+   | `orders` | `demo_lakehouse` | `orders` | `month(order_date)`, `identity(status)` | `id` |
+   | `user_sessions` | `demo_lakehouse` | `user_sessions` | `day(login_time)` | `id` |
+
+   **Partitioning explained:**
+   - `users`: Partitioned by month of creation and country (helps with time-based and geographic queries)
+   - `products`: Partitioned by category (helps with product category analytics)
+   - `orders`: Partitioned by month and status (helps with order status trends over time)
+   - `user_sessions`: Partitioned by day (helps with daily session analytics)
+
+5. Set the write options:
+   - **Write Mode**: `upsert` (updates existing rows, inserts new ones)
+   - **Merge Strategy**: `merge_on_read` (optimizes for query performance)
+   - **Batch Size**: `10000` (number of rows per batch)
+   - **Flush Interval**: `60s` (how often to flush data to storage)
+   - **Commit Interval**: `300s` (how often to commit Iceberg snapshots)
+
+6. Click **Save** or **Create Pipeline**.
+
+**Step 5: Start the Pipeline and Monitor Progress**
+
+1. Find your pipeline in the pipelines list and click on it.
+2. Click the **Start** or **Start Pipeline** button.
+3. OLake will now:
+   - Take an initial snapshot of all data from MySQL (this may take a few minutes with 10,000+ orders)
+   - Write the data to Iceberg tables in MinIO
+   - Begin incremental CDC replication using the MySQL binlog
+
+4. **Monitor the progress:**
+   - Watch the progress bar in the OLake UI
+   - Check the monitoring/logs tab for detailed status
+   - You can also verify data is being written by checking MinIO:
+     ```bash
+     docker exec -it minio-client /usr/bin/mc ls myminio/iceberg-warehouse/demo_lakehouse/
+     ```
+   - Or open MinIO's web console at `http://localhost:9091` (login: `minioadmin` / `minioadmin123`) and navigate to the `iceberg-warehouse` bucket
+
+5. **What to expect:**
+   - You should see four directories appear: `users/`, `products/`, `orders/`, and `user_sessions/`
+   - Each directory will contain Iceberg metadata files (`metadata/`, `snapshots/`, and Parquet data files)
+   - The initial snapshot may take 2-5 minutes depending on your system
+
+6. **Verify the data:**
+   - In OLake UI, check the monitoring tab to see row counts for each table
+   - You should see approximately:
+     - ~1,010 users
+     - ~200 products
+     - ~10,000 orders
+     - ~5,000 user sessions
+
+Once you see the data counts matching and the pipeline status shows "Running" or "Active", you're ready to query the Iceberg tables from ClickHouse!
+
+**Quick verification:** Before moving on, you can verify the Iceberg tables exist in MinIO:
 
 ```bash
-docker exec -it minio-client /usr/bin/mc ls myminio/iceberg-warehouse/demo_lakehouse/
+# List the Iceberg tables in MinIO
+docker exec -it minio-client /usr/bin/mc ls -r myminio/iceberg-warehouse/demo_lakehouse/
+
+# You should see directories for: users/, products/, orders/, user_sessions/
+# Each containing metadata/ and data/ subdirectories
 ```
-
-You should eventually see `users`, `products`, `orders`, and `user_sessions` directories—each containing Iceberg metadata (`metadata/`, `snapshots/`, data files).
-
----
-
-Hands-on Checklist
-------------------
-
-Prefer a quick checklist after your first read-through? Copy/paste these commands in order:
-
-1. **Clone & boot**
-   ```bash
-   git clone https://github.com/sandeep-devarapalli/Apache-Iceberg-with-clickhouse-olake.git
-   cd Apache-Iceberg-with-clickhouse-olake
-   docker-compose up -d
-   ```
-2. **Confirm health**  
-   `docker-compose ps`
-3. **Launch OLake UI** (separate stack) and connect to network:
-   ```bash
-   # Start OLake UI (includes its own PostgreSQL, Temporal, Elasticsearch)
-   curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
-   
-   # Connect OLake UI container to our network so it can reach MySQL/MinIO
-   OLAKE_CONTAINER=$(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
-   NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --format "{{.Name}}" | head -1)
-   docker network connect $NETWORK_NAME $OLAKE_CONTAINER
-   echo "Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
-   ```
-   Then log in at `http://localhost:8000` with `admin` / `password`.
-4. **Configure OLake** using `olake-config/OLAKE_UI_PIPELINE.md`.
-5. **Start the pipeline** → verify MinIO (`http://localhost:9091`) shows `iceberg-warehouse/demo_lakehouse/<tables>`.
-6. **Smoke test Iceberg REST**
-   ```bash
-   docker exec -it clickhouse-client clickhouse-client --host clickhouse --queries-file /scripts/mysql-integration.sql
-   ```
-7. **Materialize raw + silver/gold**
-   ```bash
-   docker exec -it clickhouse-client clickhouse-client --host clickhouse --queries-file /scripts/iceberg-setup.sql
-   ```
-8. **Benchmark raw vs optimized**
-   ```bash
-   docker exec -it clickhouse-client clickhouse-client --host clickhouse --queries-file /scripts/cross-database-analytics.sql
-   ```
-9. **Experiment** with schema evolution, rerun the scripts, share results.
 
 ---
 
 Query Iceberg Tables from ClickHouse
 ------------------------------------
 
-Once OLake has written the Iceberg metadata, run:
+Now that OLake has written the Iceberg tables to MinIO, let's connect ClickHouse to query them. ClickHouse will use the Iceberg REST catalog (provided by OLake) to discover and read these tables.
+
+Run the setup script to create ClickHouse table definitions that point to your Iceberg tables:
 
 ```bash
 docker exec -it clickhouse-client clickhouse-client --host clickhouse --queries-file /scripts/iceberg-setup.sql
