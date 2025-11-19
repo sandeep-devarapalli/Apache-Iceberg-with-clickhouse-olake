@@ -124,7 +124,7 @@ services:
     networks:
       - clickhouse_lakehouse-net
     depends_on:
-      temporal-postgresql:
+      postgresql:
         condition: service_healthy
       temporal:
         condition: service_started
@@ -193,7 +193,8 @@ services:
     restart: unless-stopped
 
   # PostgreSQL for Temporal (OLake's workflow orchestration)
-  temporal-postgresql:
+  # Note: Service name must be "postgresql" for OLake UI to connect
+  postgresql:
     image: registry-1.docker.io/library/postgres:13
     container_name: temporal-postgresql
     environment:
@@ -215,7 +216,7 @@ services:
     image: registry-1.docker.io/temporalio/auto-setup:1.22.3
     container_name: temporal
     depends_on:
-      temporal-postgresql:
+      postgresql:
         condition: service_healthy
       temporal-elasticsearch:
         condition: service_healthy
@@ -224,7 +225,7 @@ services:
       - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
-      - POSTGRES_SEEDS=temporal-postgresql
+      - POSTGRES_SEEDS=postgresql
       - ENABLE_ES=true
       - ES_SEEDS=temporal-elasticsearch
       - ES_VERSION=v7
