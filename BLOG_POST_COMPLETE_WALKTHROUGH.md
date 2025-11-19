@@ -135,11 +135,15 @@ According to the [OLake UI QuickStart guide](https://olake.io/docs/getting-start
 ```bash
 # Start OLake UI (this creates its own network and all services)
 curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-compose.yml | docker compose -f - up -d
+
+# Wait for OLake UI to be healthy
+echo "Waiting for OLake UI to start..."
+sleep 15
 ```
 
 **Connect OLake UI to our network:**
 
-OLake UI runs in its own Docker network. To allow it to reach our MySQL and MinIO services, we need to connect the OLake UI container to our network and restart it:
+OLake UI runs in its own Docker network. To allow it to reach our MySQL and MinIO services, we need to connect the OLake UI container to our network. **Important:** Connect the network BEFORE OLake UI fully initializes, or restart it after connecting:
 
 ```bash
 # Find the OLake UI container name
@@ -153,21 +157,57 @@ docker network connect $NETWORK_NAME $OLAKE_CONTAINER
 echo "✓ Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
 
 # Restart OLake UI to ensure it picks up the network changes
-docker restart olake-ui
-echo "✓ Restarted OLake UI. Wait 10-15 seconds for it to be healthy..."
+# This is critical - OLake UI needs to restart after network connection
+docker restart olake-ui olake-temporal-worker
+echo "✓ Restarted OLake services. Wait 20-30 seconds for them to be healthy..."
+
+# Wait for services to be ready
+sleep 20
 ```
 
 **Verify connectivity:**
 
 ```bash
 # Check that olake-ui can resolve MySQL hostname
-docker exec olake-ui ping -c 2 mysql
+docker exec olake-ui getent hosts mysql
 
 # Check that olake-ui can resolve MinIO hostname  
+docker exec olake-ui getent hosts minio
+
+# Test actual connectivity
+docker exec olake-ui ping -c 2 mysql
 docker exec olake-ui ping -c 2 minio
 ```
 
-If you see "ping: unknown host" errors, wait a bit longer for OLake UI to fully restart, then try again.
+**Troubleshooting "no such host" errors:**
+
+If you still see `"failed to ping database: dial tcp: lookup mysql on 192.168.65.7:53: no such host"` in OLake UI:
+
+1. **Verify network connection:**
+   ```bash
+   # Check both containers are on the same network
+   docker network inspect ch-demo_clickhouse_lakehouse-net --format '{{range .Containers}}{{.Name}} {{end}}' | grep -E "mysql|olake"
+   ```
+
+2. **Force a complete restart:**
+   ```bash
+   # Stop OLake services
+   docker stop olake-ui olake-temporal-worker
+   
+   # Ensure network connection
+   OLAKE_CONTAINER=$(docker ps -a --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+   NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --format "{{.Name}}" | head -1)
+   docker network connect $NETWORK_NAME $OLAKE_CONTAINER 2>/dev/null || true
+   
+   # Start services
+   docker start olake-ui olake-temporal-worker
+   sleep 25
+   ```
+
+3. **Alternative: Use IP address temporarily** (if DNS still fails):
+   - Find MySQL IP: `docker inspect mysql-server --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'`
+   - Use that IP instead of `mysql` in OLake UI source configuration
+   - This is a workaround - DNS should work after proper restart
 
 **Access OLake UI:**
 - **URL**: http://localhost:8000
