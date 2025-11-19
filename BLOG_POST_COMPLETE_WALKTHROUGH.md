@@ -139,7 +139,7 @@ curl -sSL https://raw.githubusercontent.com/datazip-inc/olake-ui/master/docker-c
 
 **Connect OLake UI to our network:**
 
-OLake UI runs in its own Docker network. To allow it to reach our MySQL and MinIO services, we need to connect the OLake UI container to our network:
+OLake UI runs in its own Docker network. To allow it to reach our MySQL and MinIO services, we need to connect the OLake UI container to our network and restart it:
 
 ```bash
 # Find the OLake UI container name
@@ -150,13 +150,24 @@ NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --form
 
 # Connect to our network
 docker network connect $NETWORK_NAME $OLAKE_CONTAINER
+echo "✓ Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
 
-echo "Connected $OLAKE_CONTAINER to network $NETWORK_NAME"
+# Restart OLake UI to ensure it picks up the network changes
+docker restart olake-ui
+echo "✓ Restarted OLake UI. Wait 10-15 seconds for it to be healthy..."
 ```
 
-# Clean up and restart
-docker rm -f olake-ui olake-temporal-worker olake-signup-init 2>/dev/null
-docker network rm olake-network 2>/dev/null
+**Verify connectivity:**
+
+```bash
+# Check that olake-ui can resolve MySQL hostname
+docker exec olake-ui ping -c 2 mysql
+
+# Check that olake-ui can resolve MinIO hostname  
+docker exec olake-ui ping -c 2 minio
+```
+
+If you see "ping: unknown host" errors, wait a bit longer for OLake UI to fully restart, then try again.
 
 **Access OLake UI:**
 - **URL**: http://localhost:8000
@@ -228,7 +239,9 @@ Once the container is healthy you can jump straight into the OLake pipeline step
 Configure OLake UI: Step-by-Step Guide
 ---------------------------------------
 
-Now that OLake UI is running, let's configure it to replicate data from MySQL to Iceberg tables in MinIO. Open your browser and navigate to `http://localhost:8000`. You'll see the OLake UI login page.
+**Note:** If you haven't already connected OLake UI to the Docker network (see the "Launch OLake UI" section above), do that first. The network connection is required for OLake UI to reach MySQL and MinIO.
+
+Now let's configure OLake UI to replicate data from MySQL to Iceberg tables in MinIO. Open your browser and navigate to `http://localhost:8000`. You'll see the OLake UI login page.
 
 **Step 1: Log in to OLake UI**
 
@@ -250,6 +263,23 @@ Once logged in, you'll see the OLake dashboard. We need to configure two things:
    - **Password**: `olake_pass`
    - **Enable SSL**: Leave this unchecked (set to `false`)
 4. Click **Next** or **Test Connection** to verify the connection works.
+
+   **Troubleshooting connection errors:**
+   
+   If you see an error like `"failed to ping database: dial tcp: lookup mysql on ...: no such host"`, it means OLake UI can't resolve the `mysql` hostname. This usually happens if:
+   - The network connection wasn't established before starting OLake UI
+   - OLake UI needs to be restarted after connecting to the network
+   
+   **Fix:** Run these commands and try the connection test again:
+   ```bash
+   # Connect to network and restart
+   OLAKE_CONTAINER=$(docker ps --filter "name=olake-ui" --format "{{.Names}}" | head -1)
+   NETWORK_NAME=$(docker network ls --filter "name=clickhouse_lakehouse-net" --format "{{.Name}}" | head -1)
+   docker network connect $NETWORK_NAME $OLAKE_CONTAINER
+   docker restart olake-ui
+   sleep 15  # Wait for OLake UI to be healthy
+   ```
+
 5. Select the tables you want to replicate:
    - ✅ `users`
    - ✅ `products`
