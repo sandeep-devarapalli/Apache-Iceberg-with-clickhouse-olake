@@ -123,6 +123,9 @@ services:
       - ${PWD}/olake-data:/tmp/olake-config
     networks:
       - clickhouse_lakehouse-net
+    dns:
+      - 127.0.0.11
+      - 8.8.8.8
     depends_on:
       postgresql:
         condition: service_healthy
