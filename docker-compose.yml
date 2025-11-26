@@ -1,5 +1,3 @@
-# Docker Compose file for ClickHouse + MySQL + OLake + Iceberg Demo
-
 services:
   # MySQL 8.0 with CDC enabled
   mysql:
@@ -24,63 +22,118 @@ services:
       timeout: 20s
       retries: 10
 
-  # MinIO S3 Storage for Iceberg
+  # Postgres for Iceberg REST metadata
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    networks:
+      - clickhouse_lakehouse-net
+    environment:
+      POSTGRES_USER: iceberg
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: iceberg
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "iceberg", "-d", "iceberg" ]
+      interval: 2s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres-data:/var/lib/postgresql/data
+
+  # MinIO S3 Storage (matching standalone config)
   minio:
     image: minio/minio:latest
-    container_name: minio-server
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
-    command: server /data --console-address ":9091"
+    hostname: minio
+    container_name: minio
     ports:
-      - "9090:9000"
+      - "9090:9090"
       - "9091:9091"
     volumes:
       - minio-data:/data
+    environment:
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: password
+      MINIO_DOMAIN: minio
+    command: server --address ":9090" --console-address ":9091" /data
     networks:
-      - clickhouse_lakehouse-net
+      clickhouse_lakehouse-net:
+        aliases:
+          - warehouse.minio
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:9090/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
 
-  # Iceberg REST Catalog
+  # MinIO Client (mc) - bucket init (warehouse + olake-data)
+  mc:
+    image: minio/mc:latest
+    container_name: mc
+    networks:
+      - clickhouse_lakehouse-net
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c " until (/usr/bin/mc alias set minio http://minio:9090 admin password) do
+        echo '...waiting for minio...' && sleep 1;
+      done; echo 'Ensuring warehouse bucket exists and is public...'; if /usr/bin/mc stat minio/warehouse > /dev/null 2>&1; then
+        echo 'Warehouse bucket exists, removing for fresh start...';
+        /usr/bin/mc rm -r --force minio/warehouse || echo 'Failed to remove warehouse, proceeding...';
+      fi; /usr/bin/mc mb minio/warehouse; /usr/bin/mc anonymous set public minio/warehouse;
+
+      echo 'Ensuring olake-data bucket exists and is public...'; /usr/bin/mc mb minio/olake-data --ignore-existing; /usr/bin/mc anonymous set public minio/olake-data;
+
+      echo 'MinIO buckets setup complete.'; "
+
+  # Initialize test table for OLake connection testing
+  init-test-table:
+    image: curlimages/curl:latest
+    container_name: init-test-table
+    networks:
+      - clickhouse_lakehouse-net
+    volumes:
+      - ./scripts:/scripts
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+      mc:
+        condition: service_completed_successfully
+    entrypoint: [ "/bin/sh", "/scripts/create-test-table-init.sh" ]
+
+  # Iceberg REST Catalog (standalone config, adapted name)
   iceberg-rest:
     image: tabulario/iceberg-rest:0.6.0
     container_name: iceberg-rest
     ports:
       - "8181:8181"
-    environment:
-      AWS_REGION: us-east-1
-      CATALOG_WAREHOUSE: s3://iceberg-warehouse/
-      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
-      CATALOG_S3_ENDPOINT: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin123
-      CATALOG_S3_PATH_STYLE_ACCESS: true
-    depends_on:
-      minio:
-        condition: service_healthy
-    networks:
-      - clickhouse_lakehouse-net
-    # Healthcheck removed - Java container lacks common utilities (wget/curl/nc)
-    # REST API is confirmed working via curl from host: curl http://localhost:8181/v1/config
-    # Service starts quickly and is accessible immediately
-
-  # MinIO Client for bucket initialization and management
-  minio-client:
-    image: minio/mc:latest
-    container_name: minio-client
-    depends_on:
-      minio:
-        condition: service_healthy
     volumes:
-      - ./scripts:/scripts
+      - catalog-data:/catalog
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9090
+      CATALOG_URI: jdbc:postgresql://postgres:5432/iceberg
+      CATALOG_JDBC_USER: iceberg
+      CATALOG_JDBC_PASSWORD: password
     networks:
       - clickhouse_lakehouse-net
-    entrypoint: >
-      /bin/sh -c " sleep 10; /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin123; /usr/bin/mc mb myminio/iceberg-warehouse --ignore-existing; /usr/bin/mc mb myminio/olake-data --ignore-existing; /usr/bin/mc policy set public myminio/iceberg-warehouse; /usr/bin/mc policy set public myminio/olake-data; echo 'MinIO buckets created successfully'; tail -f /dev/null; "
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mc:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8181' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # ClickHouse Server with Iceberg support
   clickhouse:
@@ -93,12 +146,18 @@ services:
     volumes:
       - ./clickhouse-config/config.xml:/etc/clickhouse-server/config.d/config.xml
       - ./clickhouse-config/users.xml:/etc/clickhouse-server/users.d/users.xml
+      - ./clickhouse-config/minio-iceberg.xml:/etc/clickhouse-server/config.d/minio-iceberg.xml
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ""
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT: http://minio:9090
+      AWS_S3_FORCE_PATH_STYLE: "true"
     ulimits:
       nofile:
         soft: 262144
@@ -109,7 +168,7 @@ services:
       mysql:
         condition: service_healthy
       iceberg-rest:
-        condition: service_healthy
+        condition: service_started
     networks:
       - clickhouse_lakehouse-net
     healthcheck:
@@ -118,7 +177,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # ClickHouse Client for easy CLI access
+  # ClickHouse Client
   clickhouse-client:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse-client
@@ -133,169 +192,7 @@ services:
     tty: true
     command: tail -f /dev/null
 
-  # OLake UI - Data Lake Orchestration Platform
-  olake-ui:
-    image: registry-1.docker.io/olakego/ui:latest
-    container_name: olake-ui
-    environment:
-      CONTAINER_REGISTRY_BASE: registry-1.docker.io
-      OLAKE_SECRET_KEY: ""
-      PERSISTENT_DIR: ${PWD}/olake-data
-    ports:
-      - "8000:8000"  # OLake UI web interface
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${PWD}/olake-data:/tmp/olake-config
-    networks:
-      - clickhouse_lakehouse-net
-    dns:
-      - 127.0.0.11
-      - 8.8.8.8
-    extra_hosts:
-      - "mysql:172.25.0.4"
-    depends_on:
-      postgresql:
-        condition: service_healthy
-      temporal:
-        condition: service_started
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8000"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  # OLake UI Signup Initialization
-  olake-signup-init:
-    image: registry-1.docker.io/curlimages/curl:latest
-    container_name: olake-signup-init
-    networks:
-      - clickhouse_lakehouse-net
-    depends_on:
-      olake-ui:
-        condition: service_healthy
-    environment:
-      USERNAME: admin
-      PASSWORD: password
-      EMAIL: admin@example.com
-      OLAKE_APP_URL: "http://olake-ui:8000/signup"
-    command: >
-      sh -c "
-        echo 'signup-init: Initializing user setup...'
-        JSON_PAYLOAD=$$(printf '{\"username\":\"%s\",\"password\":\"%s\",\"email\":\"%s\"}' \"$${USERNAME}\" \"$${PASSWORD}\" \"$${EMAIL}\")
-        echo \"signup-init: Attempting to create user '$${USERNAME}' via $${OLAKE_APP_URL}\"
-        HTTP_RESPONSE_CODE=$$(/usr/bin/curl -s -o /dev/stderr -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d \"$${JSON_PAYLOAD}\" \"$${OLAKE_APP_URL}\")
-        echo ''
-        if ! [ \"$${HTTP_RESPONSE_CODE}\" -eq \"$${HTTP_RESPONSE_CODE}\" ] 2>/dev/null; then
-            echo \"signup-init: ERROR - HTTP_RESPONSE_CODE is not a number: '$${HTTP_RESPONSE_CODE}'\"
-            exit 1;
-        fi
-        if [ \"$${HTTP_RESPONSE_CODE}\" -ge 200 ] && [ \"$${HTTP_RESPONSE_CODE}\" -lt 300 ]; then
-          echo \"signup-init: User '$${USERNAME}' creation request successful (HTTP $${HTTP_RESPONSE_CODE}).\";
-        else
-          echo \"signup-init: User '$${USERNAME}' creation request FAILED (HTTP $${HTTP_RESPONSE_CODE}). Server response body above.\";
-          exit 1;
-        fi
-        echo 'signup-init: User setup process complete.';
-      "
-    restart: "no"
-
-  # OLake Temporal Worker
-  olake-temporal-worker:
-    image: registry-1.docker.io/olakego/ui-worker:latest
-    container_name: olake-temporal-worker
-    networks:
-      - clickhouse_lakehouse-net
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${PWD}/olake-data:/tmp/olake-config
-    environment:
-      CONTAINER_REGISTRY_BASE: registry-1.docker.io
-      OLAKE_SECRET_KEY: ""
-      PERSISTENT_DIR: ${PWD}/olake-data
-      OLAKE_CALLBACK_URL: "http://olake-ui:8000/internal/worker/callback"
-      DOCKER_NETWORK: ch-demo_clickhouse_lakehouse-net
-      OLAKE_DOCKER_NETWORK: ch-demo_clickhouse_lakehouse-net
-    dns:
-      - 127.0.0.11
-      - 8.8.8.8
-    extra_hosts:
-      - "mysql:172.25.0.4"
-    depends_on:
-      temporal:
-        condition: service_started
-      olake-ui:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # PostgreSQL for Temporal (OLake's workflow orchestration)
-  # Note: Service name must be "postgresql" for OLake UI to connect
-  postgresql:
-    image: registry-1.docker.io/library/postgres:13
-    container_name: temporal-postgresql
-    environment:
-      POSTGRES_USER: temporal
-      POSTGRES_PASSWORD: temporal
-    networks:
-      - clickhouse_lakehouse-net
-    volumes:
-      - temporal-postgresql-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal -h localhost -p 5432"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Temporal Server (workflow orchestration for OLake)
-  temporal:
-    image: registry-1.docker.io/temporalio/auto-setup:1.22.3
-    container_name: temporal
-    depends_on:
-      postgresql:
-        condition: service_healthy
-      temporal-elasticsearch:
-        condition: service_healthy
-    environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_USER=temporal
-      - POSTGRES_PWD=temporal
-      - POSTGRES_SEEDS=postgresql
-      - ENABLE_ES=true
-      - ES_SEEDS=temporal-elasticsearch
-      - ES_VERSION=v7
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    networks:
-      - clickhouse_lakehouse-net
-    restart: unless-stopped
-
-  # Elasticsearch for Temporal (search backend)
-  temporal-elasticsearch:
-    image: registry-1.docker.io/library/elasticsearch:7.17.10
-    container_name: temporal-elasticsearch
-    environment:
-      - cluster.routing.allocation.disk.threshold_enabled=true
-      - cluster.routing.allocation.disk.watermark.low=512mb
-      - cluster.routing.allocation.disk.watermark.high=256mb
-      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms256m -Xmx256m
-      - xpack.security.enabled=false
-    networks:
-      - clickhouse_lakehouse-net
-    volumes:
-      - temporal-elasticsearch-data:/usr/share/elasticsearch/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  # MySQL Client for easy database access
+  # MySQL Client
   mysql-client:
     image: mysql:8.0
     container_name: mysql-client
@@ -310,18 +207,27 @@ services:
     tty: true
     command: tail -f /dev/null
 
+  # Auto-connect OLake test containers to network
+  olake-auto-connect:
+    image: docker:latest
+    container_name: olake-auto-connect
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts:/scripts
+    networks:
+      - clickhouse_lakehouse-net
+    command: >
+      sh -c "apk add --no-cache bash && chmod +x /scripts/auto-connect-olake-containers.sh && /scripts/auto-connect-olake-containers.sh"
+    restart: unless-stopped
+
 volumes:
   mysql-data:
   minio-data:
   clickhouse-data:
   clickhouse-logs:
-  temporal-postgresql-data:
-  temporal-elasticsearch-data:
+  catalog-data:
 
 
 networks:
   clickhouse_lakehouse-net:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.25.0.0/16

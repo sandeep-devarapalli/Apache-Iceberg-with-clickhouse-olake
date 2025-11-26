@@ -2,8 +2,18 @@
 -- This script demonstrates the performance difference between querying raw Iceberg tables
 -- (via REST catalog) and ClickHouse-optimized MergeTree tables (silver/gold layers)
 --
--- Usage: docker exec -i clickhouse-server clickhouse-client < scripts/compare-query-performance.sql
--- Or: docker exec -it clickhouse-client clickhouse-client
+-- Usage: docker exec -it clickhouse-client clickhouse-client --host clickhouse --queries-file /scripts/compare-query-performance.sql
+
+-- Set up database connection for raw Iceberg tables
+SET allow_database_iceberg = 1;
+SET allow_experimental_database_iceberg = 1;
+DROP DATABASE IF EXISTS demo_lakehouse_db;
+CREATE DATABASE demo_lakehouse_db
+ENGINE = DataLakeCatalog('http://iceberg-rest:8181/v1', 'admin', 'password')
+SETTINGS 
+    catalog_type = 'rest', 
+    storage_endpoint = 'http://minio:9090/warehouse', 
+    warehouse = 'iceberg_job_demo_db';
 
 SELECT '=== QUERY PERFORMANCE COMPARISON ===' AS title;
 SELECT 'Comparing Raw Iceberg (REST Catalog) vs Optimized ClickHouse Tables' AS description;
@@ -13,27 +23,30 @@ SELECT '';
 SELECT '--- Test 1: Orders by Status (Simple Aggregation) ---' AS test;
 
 SELECT 'RAW ICEBERG (REST Catalog) - Querying from MinIO via REST API' AS layer;
+USE demo_lakehouse_db;
 SELECT 
     status,
     COUNT(*) AS order_count,
     ROUND(AVG(total_amount), 2) AS avg_order_value,
     ROUND(SUM(total_amount), 2) AS total_revenue
-FROM iceberg_orders_lakehouse
+FROM `iceberg_job_demo_db.orders`
 GROUP BY status
 ORDER BY order_count DESC
 SETTINGS max_execution_time = 300;
 
 SELECT 'SILVER (Optimized Iceberg in MinIO) - ClickHouse-written Iceberg table' AS layer;
+USE default;
 SELECT 
     status,
     COUNT(*) AS order_count,
     ROUND(AVG(total_amount), 2) AS avg_order_value,
     ROUND(SUM(total_amount), 2) AS total_revenue
-FROM iceberg_silver_orders
+FROM silver_orders_iceberg
 GROUP BY status
 ORDER BY order_count DESC;
 
 SELECT 'GOLD (Pre-aggregated KPIs) - Fastest, pre-computed metrics' AS layer;
+USE default;
 SELECT 
     status,
     SUM(order_count) AS total_orders,
@@ -49,38 +62,43 @@ SELECT '';
 SELECT '--- Test 2: Monthly Revenue Trends (Time-based Query) ---' AS test;
 
 SELECT 'RAW ICEBERG (REST Catalog)' AS layer;
+USE demo_lakehouse_db;
 SELECT 
     toYYYYMM(order_date) AS order_month,
     status,
     COUNT(*) AS order_count,
     ROUND(SUM(total_amount), 2) AS monthly_revenue
-FROM iceberg_orders_lakehouse
+FROM `iceberg_job_demo_db.orders`
 WHERE order_date >= today() - INTERVAL 12 MONTH
 GROUP BY order_month, status
 ORDER BY order_month DESC, status
 SETTINGS max_execution_time = 300;
 
 SELECT 'SILVER (Optimized Iceberg in MinIO)' AS layer;
+USE default;
 SELECT 
     toYYYYMM(order_date) AS order_month,
     status,
     COUNT(*) AS order_count,
     ROUND(SUM(total_amount), 2) AS monthly_revenue
-FROM iceberg_silver_orders
+FROM silver_orders_iceberg
 WHERE order_date >= today() - INTERVAL 12 MONTH
 GROUP BY order_month, status
 ORDER BY order_month DESC, status;
 
 SELECT 'GOLD (Pre-aggregated)' AS layer;
-SELECT 
-    toYYYYMM(order_month) AS order_month,
+USE default;
+WITH
+    toStartOfMonth(addMonths(today(), -12)) AS cutoff_date
+SELECT
+    toYYYYMM(order_month) AS order_month_yyyymm,
     status,
     SUM(order_count) AS total_orders,
     ROUND(SUM(gross_revenue), 2) AS monthly_revenue
 FROM ch_gold_order_metrics
-WHERE order_month >= today() - INTERVAL 12 MONTH
-GROUP BY order_month, status
-ORDER BY order_month DESC, status;
+WHERE order_month >= cutoff_date
+GROUP BY order_month_yyyymm, status
+ORDER BY order_month_yyyymm DESC, status;
 
 SELECT '';
 
@@ -88,12 +106,13 @@ SELECT '';
 SELECT '--- Test 3: High-Value Orders Analysis (Complex Filtering) ---' AS test;
 
 SELECT 'RAW ICEBERG (REST Catalog)' AS layer;
+USE demo_lakehouse_db;
 SELECT 
     status,
     COUNT(*) AS high_value_orders,
     ROUND(AVG(total_amount), 2) AS avg_amount,
     ROUND(MAX(total_amount), 2) AS max_amount
-FROM iceberg_orders_lakehouse
+FROM `iceberg_job_demo_db.orders`
 WHERE total_amount > 1000 
   AND status IN ('delivered', 'shipped')
   AND order_date >= today() - INTERVAL 6 MONTH
@@ -102,12 +121,13 @@ ORDER BY high_value_orders DESC
 SETTINGS max_execution_time = 300;
 
 SELECT 'SILVER (Optimized Iceberg in MinIO)' AS layer;
+USE default;
 SELECT 
     status,
     COUNT(*) AS high_value_orders,
     ROUND(AVG(total_amount), 2) AS avg_amount,
     ROUND(MAX(total_amount), 2) AS max_amount
-FROM iceberg_silver_orders
+FROM silver_orders_iceberg
 WHERE total_amount > 1000 
   AND status IN ('delivered', 'shipped')
   AND order_date >= today() - INTERVAL 6 MONTH
@@ -120,27 +140,30 @@ SELECT '';
 SELECT '--- Test 4: Unique Customers per Status (Distinct Count) ---' AS test;
 
 SELECT 'RAW ICEBERG (REST Catalog)' AS layer;
+USE demo_lakehouse_db;
 SELECT 
     status,
     COUNT(*) AS order_count,
     uniqExact(user_id) AS unique_customers,
     ROUND(COUNT(*) / NULLIF(uniqExact(user_id), 0), 2) AS avg_orders_per_customer
-FROM iceberg_orders_lakehouse
+FROM `iceberg_job_demo_db.orders`
 GROUP BY status
 ORDER BY order_count DESC
 SETTINGS max_execution_time = 300;
 
 SELECT 'SILVER (Optimized Iceberg in MinIO)' AS layer;
+USE default;
 SELECT 
     status,
     COUNT(*) AS order_count,
     uniqExact(user_id) AS unique_customers,
     ROUND(COUNT(*) / NULLIF(uniqExact(user_id), 0), 2) AS avg_orders_per_customer
-FROM iceberg_silver_orders
+FROM silver_orders_iceberg
 GROUP BY status
 ORDER BY order_count DESC;
 
 SELECT 'GOLD (Pre-aggregated)' AS layer;
+USE default;
 SELECT 
     status,
     SUM(order_count) AS total_orders,

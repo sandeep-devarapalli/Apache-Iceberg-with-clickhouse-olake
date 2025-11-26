@@ -1,0 +1,12 @@
+<clickhouse>
+  <named_collections>
+    <minio_iceberg>
+      <!-- Base URL pointing to the MinIO bucket root that stores Iceberg tables -->
+      <url>http://minio:9090/warehouse/</url>
+      <access_key_id>admin</access_key_id>
+      <secret_access_key>password</secret_access_key>
+      <format>Parquet</format>
+    </minio_iceberg>
+  </named_collections>
+</clickhouse>
+

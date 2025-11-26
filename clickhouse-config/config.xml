@@ -8,12 +8,14 @@
     
     <!-- S3 Configuration for MinIO -->
     <s3>
-        <endpoint>http://minio:9000</endpoint>
-        <access_key_id>minioadmin</access_key_id>
-        <secret_access_key>minioadmin123</secret_access_key>
+        <endpoint>http://minio:9090</endpoint>
+        <access_key_id>admin</access_key_id>
+        <secret_access_key>password</secret_access_key>
         <region>us-east-1</region>
         <use_environment_credentials>false</use_environment_credentials>
         <use_insecure_imds_request>true</use_insecure_imds_request>
+        <request_timeout_ms>30000</request_timeout_ms>
+        <connect_timeout_ms>10000</connect_timeout_ms>
     </s3>
     
     <!-- Iceberg specific settings -->
