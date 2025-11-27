@@ -329,6 +329,8 @@ Once logged in, you'll see the OLake dashboard. We need to configure two things:
    - **Enable SSL**: Leave this unchecked (set to `false`)
 4. Click **Next** or **Test Connection** to verify the connection works.
 
+![Source configuration](../img/source_config.png)
+
 Great! Your MySQL source is now registered.
 
 **Step 3: Register the Iceberg Destination (MinIO) using OLake REST Catalog**
@@ -345,6 +347,9 @@ Great! Your MySQL source is now registered.
    - **AWS Secret Key**: `password` (MinIO secret key)
    - **AWS Region**: `us-east-1`
 4. Click **Save** or **Create Destination**.
+
+![Destination configuration](../img/dest_config.png)
+
 Perfect! Now OLake knows where to write the Iceberg tables. 
 
 The destination is configured to use:
@@ -391,6 +396,8 @@ Now we'll create a pipeline that connects the MySQL source to the Iceberg destin
    3. Select **Partitioning** in the right tab
    4. Enter the partition regex in the format: `/{field_name, transform}`
    5. For hierarchical partitioning (multiple levels), use: `/{field1, transform1}/{field2, transform2}`
+
+   ![Shtreams configuration](../img/streams.png)
    
    **Example:** For the `users` table, enter: `/{created_at, month}/{country, identity}`
    
@@ -405,6 +412,8 @@ Now we'll create a pipeline that connects the MySQL source to the Iceberg destin
 
 1. Find your job (named `iceberg_job`) in the Jobs list and click on it.
 2. Click **Sync now** under the **Actions** button.
+
+![Start the sync](../img/sync_now.png)
 
 That's it! OLake will now start syncing your MySQL data to Iceberg tables. Here's what happens behind the scenes:
 
@@ -438,6 +447,8 @@ Click on your job (`iceberg_job`) and check the monitoring/status tab. You shoul
 - ~5,059 user sessions (committed as 30 data files)
 - **Total: ~16,299 records** synced successfully
 
+![Sync completed](../img/sync_complete.png)
+
 **2. Verify the Iceberg tables exist in MinIO:**
 
 The easiest way is through the MinIO Console:
@@ -445,6 +456,8 @@ The easiest way is through the MinIO Console:
 2. Login with `admin` / `password`
 3. Navigate to the `warehouse` bucket → `iceberg_job_demo_db/` namespace
 4. You should see four table directories: `users/`, `products/`, `orders/`, `user_sessions/`
+
+![Verify tables](../img/verify_tables.png)
 
 Each table directory contains:
 - `metadata/` folder with Iceberg metadata files (snapshots, manifests, schema)
@@ -454,6 +467,8 @@ For example, the `orders/` table will have partition folders like:
 - `data/order_date_month=2024-11/status=pending/`
 - `data/order_date_month=2024-11/status=shipped/`
 - `data/order_date_month=2024-12/status=confirmed/`
+
+![Sync completed](../img/verify_partitions.png)
 
 This partition structure is what makes queries fast - when ClickHouse filters on partition columns, it only reads the relevant folders instead of scanning everything.
 
@@ -796,13 +811,17 @@ ClickHouse provides a built-in Play interface for running queries in your browse
 USE default;
 SELECT status, COUNT(*) AS orders, AVG(total_amount) AS avg_value
 FROM silver_orders_iceberg GROUP BY status;
+```
 
+![Silver layer query](../img/silver_query.png)
+
+```sql
 -- Gold (pre-aggregated KPIs) - ClickHouse local storage
 SELECT status, SUM(order_count) AS orders, AVG(avg_order_value) AS avg_value
 FROM ch_gold_order_metrics GROUP BY status;
 ```
 
-
+![Gold query](../img/gold_query.png)
 
 Raw vs Optimized Analytics & Performance Comparison
 ---------------------------------------------------
