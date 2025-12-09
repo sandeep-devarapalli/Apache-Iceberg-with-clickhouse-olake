@@ -52,32 +52,7 @@ Table of Contents
 Architecture at a Glance
 ------------------------
 
-```
-┌───────────┐   Binlog CDC    ┌──────────────┐     REST Catalog API     ┌──────────────┐
-│   MySQL   │ ───────────────▶│   OLake UI   │ ───────────────────────▶ │ Iceberg REST │
-│ (source)  │                 │ (CDC engine) │                          │   Catalog    │
-└───────────┘                 └──────────────┘                          └──────┬───────┘
-                                                                               │
-                                                                    ┌──────────▼──────────┐
-                                                                    │       MinIO         │
-                                                                    │   warehouse bucket  │
-                                                                    └──────┬───────┬──────┘
-                                                                           │       │
-                                                           Raw Iceberg     │       │   Silver Iceberg
-                                                        (`iceberg_job_*`)  │       │ (`demo_lakehouse_silver`)
-                                                                           │       │
-                                                                           ▼       ▼
-                                                                    ┌──────────┬──────────┐
-                                                                    │ ClickHouse (Iceberg │
-                                                                    │ engine + Catalog)   │
-                                                                    └──────────┴────┬─────┘
-                                                                                     │
-                                                                                     ▼
-                                                                           ┌────────────────┐
-                                                                           │ Gold Tables     │
-                                                                           │ (MergeTree KPIs)│
-                                                                           └────────────────┘
-```
+![Data Lakehouse Architecture](img/architecture.png)
 
 **How the pieces work together**
 1. **MySQL** emits change events via binlog. OLake UI captures those CDC streams and lands them in MinIO as raw Iceberg tables under the namespace `iceberg_job_<database>`.
