@@ -52,6 +52,8 @@ Table of Contents
 Architecture at a Glance
 ------------------------
 
+The following diagram illustrates the complete data flow from MySQL through OLake CDC, into MinIO as Iceberg tables, and finally into ClickHouse for analytics:
+
 ![Data Lakehouse Architecture](img/architecture.png)
 
 **How the pieces work together**
