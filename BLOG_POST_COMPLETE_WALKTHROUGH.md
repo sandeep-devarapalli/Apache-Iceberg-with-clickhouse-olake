@@ -303,6 +303,8 @@ Once logged in, you'll see the OLake dashboard. We need to configure two things:
    - **Username**: `olake`
    - **Password**: `olake_pass`
    - **Enable SSL**: Leave this unchecked (set to `false`)
+   - **Sync Mode**: `Full Refresh` (default)
+   - **Ingestion Mode**: `Upsert` (default)
 4. Click **Next** or **Test Connection** to verify the connection works.
 
 ![Source configuration](img/source_config.png)
@@ -372,6 +374,8 @@ Now we'll create a pipeline that connects the MySQL source to the Iceberg destin
    3. Select **Partitioning** in the right tab
    4. Enter the partition regex in the format: `/{field_name, transform}`
    5. For hierarchical partitioning (multiple levels), use: `/{field1, transform1}/{field2, transform2}`
+   6. Set **Sync Mode**: `Full Refresh` (default)
+   7. Set **Ingestion Mode**: `Upsert` (default)
 
    ![Streams configuration](img/streams.png)
    
