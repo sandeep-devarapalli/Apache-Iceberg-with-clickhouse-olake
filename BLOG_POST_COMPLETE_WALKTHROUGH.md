@@ -89,15 +89,15 @@ Clone the OLake UI repository:
 
 ```bash
 git clone https://github.com/datazip-inc/olake-ui.git
-cd olake-ui
 ```
 
 Now, here's the important part - open up the docker-compose file you would see a persistence path command there. We need to make sure the persistence path is set correctly. Otherwise, you'll lose all your configurations every time you restart the containers.
 
-Make sure to run this command in your terminal so it saves your file location for the host persistence path:
+Make sure to run this command in your terminal so it saves your file location for the host persistence path (while still in the `olake-setup` directory, before changing into `olake-ui`):
 
 ```bash
 export PWD=$(pwd)
+cd olake-ui
 ```
 
 The OLake UI docker-compose file uses `${PWD}/olake-data` as the host persistence path. This means all your OLake configurations, job states, and metadata will be saved to an olake-data folder in your current directory. Well, that's exactly what we want - persistent storage that survives container restarts!
