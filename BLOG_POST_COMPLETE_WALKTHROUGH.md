@@ -179,7 +179,7 @@ curl -s http://localhost:8181/v1/namespaces/test_olake/tables | jq .
 | `mysql-server` | Source OLTP DB | `localhost:3307` |
 | `postgres` | Iceberg REST catalog metadata storage | `localhost:5432` |
 | `minio` | S3-compatible storage | API `http://localhost:9090`, Console `http://localhost:9091` |
-| `mc` | MinIO client for bucket initialization | Creates `warehouse` and `olake-data` buckets, then exits (this is normal) |
+| `mc` | MinIO client for bucket initialization | Creates warehouse and olake-data buckets, then exits (this is expected) |
 | `clickhouse-server` | Query engine | HTTP `http://localhost:8123`, Native `localhost:19000` |
 | `clickhouse-client`, `mysql-client` | Utility containers | used for scripts |
 | `iceberg-rest` | Iceberg REST catalog | REST API `http://localhost:8181` |
@@ -269,7 +269,8 @@ ClickHouse ships with experimental Iceberg support disabled by default. The repo
 
 The Iceberg REST catalog service (`iceberg-rest`) is included in docker-compose.yml and provides the REST API for Iceberg table metadata. It uses a **PostgreSQL-backed catalog** (the `postgres` service) for persistent metadata storage, ensuring catalog state survives container restarts. The actual Iceberg table data is stored in MinIO's `warehouse` bucket and persists independently.
 
-Once the container is healthy (check with `docker-compose ps`), you can proceed with the OLake pipeline steps. 
+Once the container is healthy (check with `docker-compose ps`), you can proceed with the OLake pipeline steps.
+
 ---
 
 Configure OLake UI: Step-by-Step Guide
