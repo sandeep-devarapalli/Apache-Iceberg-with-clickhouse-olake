@@ -117,8 +117,6 @@ You are greeted with Olake UI! The dashboard will show you job status tabs and a
 
 **Note:** Keep this terminal window open or note the directory path. You'll need to come back to this OLake UI setup later when configuring your pipelines. For now, let's set up the rest of the infrastructure.
 
-You are greeted with Olake UI! The dashboard will show you job status tabs and an onboarding tutorial to help you get started.
-
 ---
 
 Clone the Repo & Understand the Layout
